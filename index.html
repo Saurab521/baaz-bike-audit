@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Baaz Asset Audit Scanner</title>
+  <meta name="description" content="Baaz Bike — Snipe-IT powered physical asset audit scanner with QR/barcode support">
+  <meta name="theme-color" content="#0c1017">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=JetBrains+Mono:wght@400;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
+</head>
+<body>
+
+  <!-- ═══════════════════════════════════════
+       HEADER
+       ═══════════════════════════════════════ -->
+  <header class="header">
+    <div class="header__row">
+      <div class="header__brand">
+        <span class="header__dot"></span>
+        BAAZ AUDIT
+      </div>
+      <div class="conn-badge" id="connBadge" title="Connection status">
+        <span class="conn-badge__dot"></span>
+        <span id="connLabel">Disconnected</span>
+      </div>
+    </div>
+    <div class="header__stats">
+      <span class="stat stat--all">scanned <b id="statScanned">0</b></span>
+      <span class="stat stat--ok">verified <b id="statVerified">0</b></span>
+      <span class="stat stat--bad">mismatch <b id="statMismatch">0</b></span>
+      <span class="session-timer hidden" id="sessionTimer">
+        <span class="session-timer__rec"></span>
+        <span id="timerDisplay">00:00</span>
+      </span>
+    </div>
+  </header>
+
+  <div class="app-wrap">
+
+    <!-- ═══════════════════════════════════════
+         VIEW: SETUP / CONNECT
+         ═══════════════════════════════════════ -->
+    <section class="view" id="viewSetup">
+      <div class="label-eyebrow">Connect to Snipe-IT</div>
+      <div class="card">
+        <div class="field">
+          <label class="field__label" for="inputUrl">Snipe-IT URL</label>
+          <input class="input" id="inputUrl" type="url"
+                 placeholder="https://your-instance.snipeitapp.com"
+                 autocomplete="url">
+        </div>
+        <div class="field">
+          <label class="field__label" for="inputToken">API Token</label>
+          <input class="input" id="inputToken" type="password"
+                 placeholder="Settings → API Keys → Personal Access Token">
+        </div>
+        <button class="btn btn--primary" id="btnConnect">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          Connect &amp; Start
+        </button>
+        <div id="setupStatus"></div>
+        <div class="hint">
+          🔒 Token remains only in session — you must re-enter it on reload. It is never saved.<br>
+          ⚡ URL will be remembered so you don't have to enter it again.<br>
+          🌐 If you see a CORS error: Add <code>Access-Control-Allow-Origin</code> header in your Snipe-IT server's reverse proxy.
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════
+         VIEW: SCAN
+         ═══════════════════════════════════════ -->
+    <section class="view hidden" id="viewScan">
+
+      <!-- Scanner -->
+      <div class="label-eyebrow">Scan asset tag</div>
+      <div class="card">
+        <div class="scanner-wrap">
+          <div id="reader"></div>
+          <div class="scan-line hidden" id="scanLine"></div>
+        </div>
+        <div class="btn-row" style="margin-top:12px;">
+          <button class="btn btn--outline" id="btnToggleCamera">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+            Stop camera
+          </button>
+          <button class="btn btn--outline" id="btnReconnect">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M1 4v6h6M23 20v-6h-6"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/></svg>
+            Reconnect
+          </button>
+        </div>
+        <div class="manual-row">
+          <input class="input" id="inputManualTag" type="text" placeholder="or type asset tag...">
+          <button class="btn btn--primary btn--sm" id="btnManualLookup">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            Lookup
+          </button>
+        </div>
+        <div id="scanStatus"></div>
+      </div>
+
+      <!-- Asset Result Card -->
+      <div class="tag-card hidden" id="assetCard">
+        <div class="stamp hidden" id="stamp"></div>
+        <div class="tag-card__number" id="tagNumber">—</div>
+        <div class="tag-card__name" id="tagName">—</div>
+        <div class="tag-card__meta">
+          <div class="tag-card__key">Model</div>    <div class="tag-card__val" id="tagModel">—</div>
+          <div class="tag-card__key">Serial</div>   <div class="tag-card__val" id="tagSerial">—</div>
+          <div class="tag-card__key">Location</div> <div class="tag-card__val" id="tagLocation">—</div>
+          <div class="tag-card__key">Assigned</div> <div class="tag-card__val" id="tagAssigned">—</div>
+          <div class="tag-card__key">Status</div>   <div class="tag-card__val" id="tagStatusLabel">—</div>
+          <div class="tag-card__key">Category</div> <div class="tag-card__val" id="tagCategory">—</div>
+          <div class="tag-card__key">Last Audit</div><div class="tag-card__val" id="tagLastAudit">—</div>
+        </div>
+
+        <!-- Repair & Issue Quick Stats -->
+        <div class="tag-card__extras">
+          <div class="tag-extra tag-extra--cost">
+            <span class="tag-extra__icon">💰</span>
+            <span>Total Repairs: <b id="tagRepairCost">₹0</b> (<span id="tagRepairCount">0</span>)</span>
+          </div>
+          <div class="tag-extra tag-extra--issue">
+            <span class="tag-extra__icon">⚠</span>
+            <span>Open Issues: <b id="tagIssueCount">0</b></span>
+          </div>
+        </div>
+
+        <!-- Audit buttons -->
+        <div class="btn-row">
+          <button class="btn btn--teal" id="btnConfirm">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+            Confirm &amp; Audit
+          </button>
+          <button class="btn btn--red" id="btnMismatch">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+            Mismatch
+          </button>
+        </div>
+
+        <!-- Repair & Issue Quick Actions -->
+        <div class="btn-row" style="margin-top:8px;">
+          <button class="btn btn--amber" id="btnQuickRepair">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
+            💰 Add Repair
+          </button>
+          <button class="btn btn--red" id="btnQuickIssue">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0zM12 9v4M12 17h.01"/></svg>
+            ⚠ Report Issue
+          </button>
+        </div>
+
+        <!-- Snipe-IT Advanced Integrations -->
+        <div class="label-eyebrow" style="margin-top: 16px;">Snipe-IT Tools</div>
+        <div class="btn-row" style="margin-top:4px;">
+          <button class="btn btn--outline" id="btnOfficialAudit">
+            ✅ Log Audit
+          </button>
+          <button class="btn btn--outline" id="btnCheckoutModal">
+            🔄 Checkout
+          </button>
+          <button class="btn btn--outline" id="btnCheckin">
+            📥 Check-in
+          </button>
+          <button class="btn btn--outline" id="btnStatusModal">
+            🏷️ Status
+          </button>
+        </div>
+
+        <!-- Mismatch Form -->
+        <div class="mismatch-form hidden" id="mismatchForm">
+          <label class="field__label">Actual location</label>
+          <select class="input" id="selectLocation">
+            <option value="">— Select Location —</option>
+          </select>
+          <label class="field__label">Remarks</label>
+          <textarea class="input" id="inputRemarks" placeholder="e.g. Found in warehouse, not with assigned user"></textarea>
+          <button class="btn btn--red" id="btnSubmitMismatch" style="margin-top:12px;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+            Submit Mismatch &amp; Audit
+          </button>
+        </div>
+
+        <div id="actionStatus"></div>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════
+         VIEW: SESSION LOG
+         ═══════════════════════════════════════ -->
+    <section class="view hidden" id="viewLog">
+      <div class="label-eyebrow">Session log</div>
+      <div class="card card--compact">
+        <div class="log-toolbar">
+          <input class="input" type="text" id="inputLogSearch" placeholder="🔍 Search tag, name, status...">
+          <button class="btn-icon" id="btnExportCsv" title="Export CSV">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+          </button>
+          <button class="btn-icon" id="btnPrint" title="Print report">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+          </button>
+        </div>
+        <div class="log-list" id="logList">
+          <div class="empty-state">No audits performed yet</div>
+        </div>
+        <div class="log-count" id="logCount"></div>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════
+         VIEW: REPORTS / DASHBOARD
+         ═══════════════════════════════════════ -->
+    <section class="view hidden" id="viewReports">
+      <div class="label-eyebrow">Session dashboard</div>
+
+      <!-- Stat Cards -->
+      <div class="dashboard">
+        <div class="dash-card dash-card--amber">
+          <div class="dash-card__val" id="dashScanned">0</div>
+          <div class="dash-card__label">Scanned</div>
+        </div>
+        <div class="dash-card dash-card--teal">
+          <div class="dash-card__val" id="dashVerified">0</div>
+          <div class="dash-card__label">Verified</div>
+        </div>
+        <div class="dash-card dash-card--red">
+          <div class="dash-card__val" id="dashMismatch">0</div>
+          <div class="dash-card__label">Mismatch</div>
+        </div>
+      </div>
+
+      <!-- Duration -->
+      <div class="dashboard" style="margin-top:10px;">
+        <div class="dash-card dash-card--blue" style="grid-column: span 3;">
+          <div class="dash-card__val" id="dashDuration">00:00</div>
+          <div class="dash-card__label">Session Duration</div>
+        </div>
+      </div>
+
+      <!-- Success Rate Bar -->
+      <div class="rate-bar">
+        <div class="rate-bar__label">Verification Rate</div>
+        <div class="rate-bar__track">
+          <div class="rate-bar__fill" id="rateBarFill" style="width:0%"></div>
+        </div>
+        <div class="rate-bar__pct" id="ratePct">0%</div>
+      </div>
+
+      <!-- Location Breakdown -->
+      <div class="label-eyebrow">Location breakdown</div>
+      <div class="card card--compact">
+        <div class="loc-breakdown" id="locationBreakdown">
+          <div class="empty-state">Location data will appear after audits</div>
+        </div>
+      </div>
+
+      <!-- Export Actions -->
+      <div class="label-eyebrow">Export &amp; Actions</div>
+      <div class="action-bar">
+        <button class="btn btn--outline" id="btnExportJson">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+          Export JSON
+        </button>
+        <button class="btn btn--outline" id="btnNewSession">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+          New Session
+        </button>
+      </div>
+      <div class="action-bar">
+        <button class="btn btn--red" id="btnDisconnect">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18.36 6.64a9 9 0 11-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>
+          Log Out
+        </button>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════
+         VIEW: ASSETS LIST
+         ═══════════════════════════════════════ -->
+    <section class="view hidden" id="viewAssets">
+      <div class="label-eyebrow">Location-wise Assets</div>
+      <div class="card card--compact">
+        <div class="field" style="margin-bottom: 0;">
+          <select class="input" id="selectAssetLocation">
+            <option value="">— Select Location —</option>
+          </select>
+        </div>
+      </div>
+      
+      <div class="segment-control hidden" id="assetsSegmentControl" style="margin-top: 16px;">
+        <button class="segment-btn is-active" data-tab="pending">
+          Pending (<span id="countPending">0</span>)
+        </button>
+        <button class="segment-btn" data-tab="audited">
+          Audited (<span id="countAudited">0</span>)
+        </button>
+      </div>
+
+      <div class="assets-list hidden" id="listPending"></div>
+      <div class="assets-list hidden" id="listAudited"></div>
+      
+      <div id="assetsStatus" style="margin-top: 16px; text-align: center;"></div>
+    </section>
+
+    <!-- ═══════════════════════════════════════
+         VIEW: REPAIRS & ISSUES
+         ═══════════════════════════════════════ -->
+    <section class="view hidden" id="viewRepairs">
+      <div class="label-eyebrow">Repairs &amp; Issues</div>
+
+      <!-- Summary Cards -->
+      <div class="dashboard">
+        <div class="dash-card dash-card--amber">
+          <div class="dash-card__val" id="repairTotalCost">₹0</div>
+          <div class="dash-card__label">Total Cost</div>
+        </div>
+        <div class="dash-card dash-card--teal">
+          <div class="dash-card__val" id="repairTotalCount">0</div>
+          <div class="dash-card__label">Repairs</div>
+        </div>
+        <div class="dash-card dash-card--red">
+          <div class="dash-card__val" id="issueOpenCount">0</div>
+          <div class="dash-card__label">Open Issues</div>
+        </div>
+      </div>
+
+      <!-- Search -->
+      <div class="card card--compact" style="margin-top:16px;">
+        <input class="input" type="text" id="inputRepairSearch" placeholder="🔍 Search asset tag, name, category...">
+      </div>
+
+      <!-- Segment: Repairs / Issues -->
+      <div class="segment-control" id="repairSegmentControl" style="margin-top: 16px;">
+        <button class="segment-btn is-active" data-reptab="repairs">Repairs</button>
+        <button class="segment-btn" data-reptab="issues">Issues</button>
+        <button class="segment-btn" data-reptab="top-assets">Top Expensive</button>
+      </div>
+
+      <!-- Repair History List -->
+      <div class="repairs-list" id="repairHistoryList">
+        <div class="empty-state">No repair records found</div>
+      </div>
+
+      <!-- Issues List -->
+      <div class="repairs-list hidden" id="issuesList">
+        <div class="empty-state">No issues reported</div>
+      </div>
+
+      <!-- Top Expensive Assets -->
+      <div class="repairs-list hidden" id="topAssetsList">
+        <div class="empty-state">Top expensive assets will appear here</div>
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="action-bar" style="margin-top:16px;">
+        <button class="btn btn--amber" id="btnAddRepair">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Add Repair
+        </button>
+        <button class="btn btn--orange" id="btnAddIssue">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Report Issue
+        </button>
+      </div>
+      <div class="action-bar">
+        <button class="btn btn--outline" id="btnExportRepairCsv">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+          Export Repairs CSV
+        </button>
+        <button class="btn btn--outline" id="btnExportIssuesCsv">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+          Export Issues CSV
+        </button>
+      </div>
+    </section>
+
+  </div><!-- .app-wrap -->
+
+  <!-- ═══════════════════════════════════════
+       MODAL: Add Repair
+       ═══════════════════════════════════════ -->
+  <div class="modal-overlay hidden" id="modalRepair">
+    <div class="modal">
+      <div class="modal__header">
+        <h3 class="modal__title">💰 Add Repair Cost</h3>
+        <button class="modal__close" id="btnCloseRepairModal">&times;</button>
+      </div>
+      <div class="modal__body">
+        <div class="field">
+          <label class="field__label" for="repairAssetTag">Asset Tag</label>
+          <input class="input" id="repairAssetTag" type="text" placeholder="e.g. BAAZ-001">
+        </div>
+        <div class="field">
+          <label class="field__label" for="repairDate">Date</label>
+          <input class="input" id="repairDate" type="date">
+        </div>
+        <div class="field">
+          <label class="field__label" for="repairCategory">Category</label>
+          <select class="input" id="repairCategory">
+            <option value="">— Select Category —</option>
+          </select>
+        </div>
+        <div class="field">
+          <label class="field__label" for="repairAmount">Amount (₹)</label>
+          <input class="input" id="repairAmount" type="number" min="0" placeholder="e.g. 2500">
+        </div>
+        <div class="field">
+          <label class="field__label" for="repairDescription">Description</label>
+          <textarea class="input" id="repairDescription" placeholder="Describe the repair in detail..."></textarea>
+        </div>
+        <div class="field">
+          <label class="field__label" for="repairParts">Parts Used (optional)</label>
+          <input class="input" id="repairParts" type="text" placeholder="e.g. Li-ion cells x4, brake pads">
+        </div>
+        <button class="btn btn--amber btn--full" id="btnSubmitRepair">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+          Save Repair
+        </button>
+        <div id="repairModalStatus"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════
+       MODAL: Report Issue
+       ═══════════════════════════════════════ -->
+  <div class="modal-overlay hidden" id="modalIssue">
+    <div class="modal">
+      <div class="modal__header">
+        <h3 class="modal__title">⚠ Report Issue</h3>
+        <button class="modal__close" id="btnCloseIssueModal">&times;</button>
+      </div>
+      <div class="modal__body">
+        <div class="field">
+          <label class="field__label" for="issueAssetTag">Asset Tag</label>
+          <input class="input" id="issueAssetTag" type="text" placeholder="e.g. BAAZ-001">
+        </div>
+        <div class="field">
+          <label class="field__label" for="issueType">Issue Type</label>
+          <select class="input" id="issueType">
+            <option value="">— Select Type —</option>
+          </select>
+        </div>
+        <div class="field">
+          <label class="field__label" for="issueSeverity">Severity</label>
+          <select class="input" id="issueSeverity">
+            <option value="">— Select Severity —</option>
+            <option value="critical">🔴 Critical</option>
+            <option value="medium">🟡 Medium</option>
+            <option value="low">🔵 Low</option>
+          </select>
+        </div>
+        <div class="field">
+          <label class="field__label" for="issueDescription">Description</label>
+          <textarea class="input" id="issueDescription" placeholder="Describe the issue..."></textarea>
+        </div>
+        <button class="btn btn--orange btn--full" id="btnSubmitIssue">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+          Save Issue
+        </button>
+        <div id="issueModalStatus"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════
+       BOTTOM NAVIGATION
+       ═══════════════════════════════════════ -->
+  <nav class="bottom-nav hidden" id="bottomNav">
+    <div class="bottom-nav__inner">
+      <button class="nav-btn is-active" data-view="viewScan">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <path d="M4 7V4h3M20 7V4h-3M4 17v3h3M20 17v3h-3"/>
+          <rect x="7" y="7" width="10" height="10" rx="1"/>
+        </svg>
+        Scan
+      </button>
+      <button class="nav-btn" data-view="viewLog">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+          <polyline points="14 2 14 8 20 8"/>
+          <line x1="16" y1="13" x2="8" y2="13"/>
+          <line x1="16" y1="17" x2="8" y2="17"/>
+        </svg>
+        Log
+      </button>
+      <button class="nav-btn" data-view="viewAssets">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <line x1="8" y1="6" x2="21" y2="6"/>
+          <line x1="8" y1="12" x2="21" y2="12"/>
+          <line x1="8" y1="18" x2="21" y2="18"/>
+          <line x1="3" y1="6" x2="3.01" y2="6"/>
+          <line x1="3" y1="12" x2="3.01" y2="12"/>
+          <line x1="3" y1="18" x2="3.01" y2="18"/>
+        </svg>
+        Assets
+      </button>
+      <button class="nav-btn" data-view="viewReports">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <path d="M18 20V10M12 20V4M6 20v-6"/>
+        </svg>
+        Reports
+      </button>
+      <button class="nav-btn" data-view="viewRepairs">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/>
+        </svg>
+        Repairs
+      </button>
+    </div>
+  </nav>
+
+  <!-- ═══════════════════════════════════════
+       MODAL: Checkout Asset
+       ═══════════════════════════════════════ -->
+  <div class="modal-overlay hidden" id="modalCheckout">
+    <div class="modal">
+      <div class="modal__header">
+        <h3 class="modal__title">🔄 Checkout Asset</h3>
+        <button class="modal__close" id="btnCloseCheckoutModal">&times;</button>
+      </div>
+      <div class="modal__body">
+        <div class="field">
+          <label class="field__label" for="checkoutUser">Assign to User</label>
+          <select class="input" id="checkoutUser">
+            <option value="">— Loading users... —</option>
+          </select>
+        </div>
+        <div class="field">
+          <label class="field__label" for="checkoutNotes">Notes</label>
+          <textarea class="input" id="checkoutNotes" placeholder="Any details..."></textarea>
+        </div>
+        <button class="btn btn--teal btn--full" id="btnSubmitCheckout">
+          Checkout Asset
+        </button>
+        <div id="checkoutModalStatus"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════
+       MODAL: Update Status
+       ═══════════════════════════════════════ -->
+  <div class="modal-overlay hidden" id="modalStatus">
+    <div class="modal">
+      <div class="modal__header">
+        <h3 class="modal__title">🏷️ Update Status</h3>
+        <button class="modal__close" id="btnCloseStatusModal">&times;</button>
+      </div>
+      <div class="modal__body">
+        <div class="field">
+          <label class="field__label" for="statusSelect">New Status</label>
+          <select class="input" id="statusSelect">
+            <option value="">— Loading statuses... —</option>
+          </select>
+        </div>
+        <button class="btn btn--teal btn--full" id="btnSubmitStatus">
+          Update Status
+        </button>
+        <div id="statusModalStatus"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Container -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <script src="js/app.js?v=13" type="module"></script>
+</body>
+</html>

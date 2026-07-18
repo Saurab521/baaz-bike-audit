@@ -1,0 +1,1126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Baaz Asset Audit Scanner</title>
+<meta name="description" content="Baaz Bike Assets — Snipe-IT powered physical audit scanner with QR/barcode support">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=JetBrains+Mono:wght@400;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
+<style>
+  :root{
+    --bg:#0c1017;
+    --bg-glass:rgba(15,20,30,0.72);
+    --surface:#151b25;
+    --surface-2:#1c2430;
+    --surface-3:#232d3a;
+    --border:#293342;
+    --border-glow:rgba(242,183,5,0.18);
+    --text:#eae8e3;
+    --text-dim:#7e8a9a;
+    --amber:#f2b705;
+    --amber-soft:rgba(242,183,5,0.12);
+    --amber-glow:rgba(242,183,5,0.35);
+    --teal:#2dd4bf;
+    --teal-soft:rgba(45,212,191,0.10);
+    --red:#ef5350;
+    --red-soft:rgba(239,83,80,0.10);
+    --blue:#60a5fa;
+    --radius:12px;
+    --radius-lg:16px;
+    --shadow:0 4px 24px rgba(0,0,0,0.4);
+    --transition:all .25s cubic-bezier(.4,0,.2,1);
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  html{scroll-behavior:smooth;}
+  body{
+    background:var(--bg);
+    color:var(--text);
+    font-family:'Inter',system-ui,-apple-system,sans-serif;
+    min-height:100vh;
+    min-height:100dvh;
+    padding-bottom:env(safe-area-inset-bottom,20px);
+    overflow-x:hidden;
+  }
+  body::before{
+    content:"";position:fixed;top:-50%;left:-50%;width:200%;height:200%;
+    background:radial-gradient(ellipse at 30% 20%,rgba(242,183,5,0.04) 0%,transparent 60%),
+               radial-gradient(ellipse at 80% 80%,rgba(45,212,191,0.03) 0%,transparent 50%);
+    pointer-events:none;z-index:0;
+  }
+  .wrap{max-width:520px;margin:0 auto;padding:0 16px 40px;position:relative;z-index:1;}
+
+  /* ─── HEADER ─── */
+  header.top{
+    position:sticky;top:0;z-index:50;
+    background:var(--bg-glass);
+    backdrop-filter:blur(20px) saturate(1.6);
+    -webkit-backdrop-filter:blur(20px) saturate(1.6);
+    border-bottom:1px solid var(--border);
+    padding:12px 16px 14px;
+    transition:var(--transition);
+  }
+  .header-row{display:flex;justify-content:space-between;align-items:center;}
+  .brand{
+    font-family:'Space Grotesk',sans-serif;
+    font-weight:700;font-size:1.1rem;letter-spacing:0.03em;
+    display:flex;align-items:center;gap:9px;
+  }
+  .brand .dot{
+    width:9px;height:9px;border-radius:50%;
+    background:var(--amber);
+    box-shadow:0 0 10px var(--amber-glow),0 0 30px rgba(242,183,5,0.15);
+    animation:pulse-dot 2.5s ease-in-out infinite;
+  }
+  @keyframes pulse-dot{
+    0%,100%{box-shadow:0 0 10px var(--amber-glow),0 0 30px rgba(242,183,5,0.15);}
+    50%{box-shadow:0 0 16px var(--amber),0 0 40px rgba(242,183,5,0.3);}
+  }
+  .conn-badge{
+    display:flex;align-items:center;gap:5px;
+    font-family:'JetBrains Mono',monospace;font-size:0.65rem;
+    padding:4px 10px;border-radius:20px;
+    background:var(--surface-2);border:1px solid var(--border);
+    color:var(--text-dim);transition:var(--transition);
+    cursor:pointer;
+  }
+  .conn-badge.live{
+    color:var(--teal);border-color:rgba(45,212,191,0.3);
+    background:var(--teal-soft);
+  }
+  .conn-badge .indicator{
+    width:6px;height:6px;border-radius:50%;
+    background:var(--text-dim);transition:var(--transition);
+  }
+  .conn-badge.live .indicator{background:var(--teal);box-shadow:0 0 6px var(--teal);}
+  .stats-bar{
+    display:flex;gap:16px;margin-top:8px;
+    font-family:'JetBrains Mono',monospace;font-size:0.72rem;color:var(--text-dim);
+  }
+  .stats-bar .stat{display:flex;align-items:center;gap:4px;}
+  .stats-bar b{font-weight:700;}
+  .stats-bar .ok b{color:var(--teal);}
+  .stats-bar .bad b{color:var(--red);}
+  .stats-bar .all b{color:var(--amber);}
+
+  /* ─── SESSION TIMER ─── */
+  .session-timer{
+    font-family:'JetBrains Mono',monospace;font-size:0.65rem;
+    color:var(--text-dim);margin-left:auto;
+    display:flex;align-items:center;gap:5px;
+  }
+  .session-timer .timer-icon{
+    width:4px;height:4px;border-radius:50%;background:var(--red);
+    animation:blink-rec 1.2s steps(2,start) infinite;
+  }
+  @keyframes blink-rec{to{visibility:hidden;}}
+
+  /* ─── SECTIONS ─── */
+  section{margin-top:20px;animation:fadeUp .4s ease-out both;}
+  @keyframes fadeUp{
+    from{opacity:0;transform:translateY(12px);}
+    to{opacity:1;transform:translateY(0);}
+  }
+  .label-eyebrow{
+    font-family:'JetBrains Mono',monospace;
+    font-size:0.66rem;letter-spacing:0.14em;text-transform:uppercase;
+    color:var(--text-dim);margin-bottom:10px;
+    display:flex;align-items:center;gap:8px;
+  }
+  .label-eyebrow::before{
+    content:"";width:3px;height:12px;border-radius:2px;
+    background:linear-gradient(180deg,var(--amber),var(--amber-glow));
+  }
+
+  /* ─── CARD ─── */
+  .card{
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:var(--radius-lg);
+    padding:18px;
+    box-shadow:var(--shadow);
+    transition:var(--transition);
+    position:relative;
+    overflow:hidden;
+  }
+  .card::before{
+    content:"";position:absolute;top:0;left:0;right:0;height:1px;
+    background:linear-gradient(90deg,transparent,rgba(242,183,5,0.15),transparent);
+  }
+  .card:hover{border-color:rgba(242,183,5,0.12);}
+
+  /* ─── INPUTS ─── */
+  .field{margin-bottom:14px;}
+  .field label{
+    display:block;font-size:0.76rem;color:var(--text-dim);
+    margin-bottom:6px;font-weight:500;letter-spacing:0.02em;
+  }
+  .field input,.field select,.field textarea{
+    width:100%;padding:11px 14px;border-radius:10px;
+    border:1px solid var(--border);
+    background:var(--surface-2);color:var(--text);
+    font-size:0.92rem;font-family:'JetBrains Mono',monospace;
+    transition:var(--transition);
+  }
+  .field input:focus,.field select:focus,.field textarea:focus{
+    outline:none;border-color:var(--amber);
+    box-shadow:0 0 0 3px var(--amber-soft);
+  }
+  .field input::placeholder{color:var(--text-dim);opacity:0.6;}
+
+  /* ─── BUTTONS ─── */
+  .btn{
+    display:inline-flex;align-items:center;justify-content:center;gap:7px;
+    padding:12px 18px;border-radius:10px;border:none;cursor:pointer;
+    font-weight:600;font-size:0.9rem;width:100%;
+    transition:all .15s cubic-bezier(.4,0,.2,1);
+    position:relative;overflow:hidden;
+    font-family:'Inter',sans-serif;
+  }
+  .btn::after{
+    content:"";position:absolute;inset:0;
+    background:linear-gradient(180deg,rgba(255,255,255,0.08),transparent);
+    pointer-events:none;
+  }
+  .btn:active{transform:scale(0.97);}
+  .btn-primary{
+    background:linear-gradient(135deg,#f2b705,#e5a800);
+    color:#1a1400;
+    box-shadow:0 2px 12px rgba(242,183,5,0.25);
+  }
+  .btn-primary:hover{box-shadow:0 4px 20px rgba(242,183,5,0.35);transform:translateY(-1px);}
+  .btn-outline{
+    background:var(--surface-2);
+    border:1px solid var(--border);
+    color:var(--text);
+  }
+  .btn-outline:hover{border-color:var(--text-dim);background:var(--surface-3);}
+  .btn-teal{
+    background:linear-gradient(135deg,#2dd4bf,#14b8a6);
+    color:#042f2e;
+    box-shadow:0 2px 12px rgba(45,212,191,0.25);
+  }
+  .btn-teal:hover{box-shadow:0 4px 20px rgba(45,212,191,0.35);transform:translateY(-1px);}
+  .btn-red{
+    background:transparent;
+    border:1px solid rgba(239,83,80,0.5);
+    color:var(--red);
+  }
+  .btn-red:hover{background:var(--red-soft);border-color:var(--red);}
+  .btn-row{display:flex;gap:10px;margin-top:14px;}
+  .btn-row .btn{flex:1;}
+  .btn-sm{padding:8px 14px;font-size:0.82rem;width:auto;}
+  .btn-icon{
+    width:40px;height:40px;padding:0;border-radius:10px;
+    display:flex;align-items:center;justify-content:center;
+    background:var(--surface-2);border:1px solid var(--border);
+    color:var(--text-dim);cursor:pointer;transition:var(--transition);
+    flex-shrink:0;
+  }
+  .btn-icon:hover{border-color:var(--amber);color:var(--amber);}
+  .btn-icon svg{width:18px;height:18px;}
+
+  .hint{font-size:0.74rem;color:var(--text-dim);margin-top:10px;line-height:1.6;}
+  .hint a{color:var(--amber);text-decoration:none;}
+  .hint a:hover{text-decoration:underline;}
+  .hint code{
+    font-family:'JetBrains Mono',monospace;font-size:0.72rem;
+    background:var(--surface-3);padding:2px 6px;border-radius:4px;
+  }
+
+  .status-msg{
+    font-size:0.8rem;padding:10px 12px;border-radius:8px;margin-top:12px;
+    font-family:'JetBrains Mono',monospace;
+    animation:fadeUp .3s ease-out;
+  }
+  .status-msg.err{background:var(--red-soft);color:var(--red);border:1px solid rgba(239,83,80,0.25);}
+  .status-msg.ok{background:var(--teal-soft);color:var(--teal);border:1px solid rgba(45,212,191,0.25);}
+
+  /* ─── SCANNER ─── */
+  .scanner-wrap{
+    position:relative;border-radius:var(--radius);overflow:hidden;
+    border:1px solid var(--border);background:#000;min-height:240px;
+  }
+  .scanner-wrap::after{
+    content:"";position:absolute;inset:0;
+    border-radius:var(--radius);
+    box-shadow:inset 0 0 60px rgba(0,0,0,0.5);
+    pointer-events:none;z-index:2;
+  }
+  #reader{width:100%;min-height:240px;}
+  #reader video{border-radius:var(--radius);}
+  .scan-line{
+    position:absolute;top:0;left:5%;right:5%;height:2px;z-index:3;
+    background:linear-gradient(90deg,transparent,var(--amber),transparent);
+    box-shadow:0 0 15px var(--amber-glow);
+    animation:scanLine 2.5s ease-in-out infinite;
+    pointer-events:none;
+  }
+  @keyframes scanLine{
+    0%,100%{top:15%;opacity:0.3;}
+    50%{top:80%;opacity:1;}
+  }
+
+  .manual-row{display:flex;gap:8px;margin-top:14px;}
+  .manual-row input{flex:1;font-size:0.88rem;}
+  .manual-row .btn{width:auto;min-width:90px;}
+
+  /* ─── ASSET TAG CARD ─── */
+  .tag-card{
+    position:relative;
+    background:var(--surface);
+    border:1px dashed #3a4555;
+    border-radius:var(--radius);
+    padding:20px 18px 18px;
+    margin-top:16px;
+    animation:slideIn .35s ease-out;
+    overflow:visible;
+  }
+  @keyframes slideIn{
+    from{opacity:0;transform:translateY(16px) scale(0.98);}
+    to{opacity:1;transform:translateY(0) scale(1);}
+  }
+  .tag-card::before,.tag-card::after{
+    content:"";position:absolute;top:50%;transform:translateY(-50%);
+    width:16px;height:16px;border-radius:50%;background:var(--bg);
+    border:1px dashed #3a4555;
+  }
+  .tag-card::before{left:-9px;}
+  .tag-card::after{right:-9px;}
+  .tag-number{
+    font-family:'JetBrains Mono',monospace;font-weight:700;font-size:1.4rem;
+    color:var(--amber);letter-spacing:0.04em;
+  }
+  .tag-name{
+    font-family:'Space Grotesk',sans-serif;font-size:1.05rem;
+    margin:5px 0 14px;color:var(--text);
+  }
+  .tag-meta{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;font-size:0.84rem;}
+  .tag-meta .k{
+    color:var(--text-dim);font-family:'JetBrains Mono',monospace;
+    font-size:0.7rem;text-transform:uppercase;letter-spacing:0.06em;align-self:center;
+  }
+  .tag-meta .v{color:var(--text);}
+  .stamp{
+    position:absolute;top:14px;right:16px;
+    font-family:'JetBrains Mono',monospace;font-size:0.66rem;font-weight:700;
+    letter-spacing:0.1em;padding:4px 10px;border-radius:5px;
+    transform:rotate(5deg);animation:stampIn .3s ease-out;
+  }
+  @keyframes stampIn{
+    from{transform:rotate(5deg) scale(0);opacity:0;}
+    to{transform:rotate(5deg) scale(1);opacity:1;}
+  }
+  .stamp.verified{color:var(--teal);border:2px solid var(--teal);background:var(--teal-soft);}
+  .stamp.mismatch{color:var(--red);border:2px solid var(--red);background:var(--red-soft);}
+
+  .mismatch-form{
+    margin-top:16px;padding-top:16px;border-top:1px solid var(--border);
+    animation:fadeUp .3s ease-out;
+  }
+  .mismatch-form label{
+    display:block;font-size:0.76rem;color:var(--text-dim);margin-bottom:6px;font-weight:500;
+  }
+  .mismatch-form select,.mismatch-form textarea{
+    width:100%;padding:10px 12px;border-radius:8px;
+    border:1px solid var(--border);background:var(--surface-2);color:var(--text);
+    font-size:0.88rem;font-family:'Inter',sans-serif;transition:var(--transition);
+  }
+  .mismatch-form select{margin-bottom:12px;}
+  .mismatch-form textarea{min-height:65px;resize:vertical;}
+  .mismatch-form select:focus,.mismatch-form textarea:focus{
+    outline:none;border-color:var(--amber);box-shadow:0 0 0 3px var(--amber-soft);
+  }
+
+  /* ─── SESSION LOG ─── */
+  .log-toolbar{
+    display:flex;gap:8px;margin-bottom:10px;align-items:center;
+  }
+  .log-toolbar input{
+    flex:1;padding:8px 12px;border-radius:8px;
+    border:1px solid var(--border);background:var(--surface-2);color:var(--text);
+    font-size:0.82rem;font-family:'JetBrains Mono',monospace;
+    transition:var(--transition);
+  }
+  .log-toolbar input:focus{outline:none;border-color:var(--amber);box-shadow:0 0 0 3px var(--amber-soft);}
+  .log-toolbar input::placeholder{color:var(--text-dim);opacity:0.5;}
+  .log-list{max-height:280px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--border) transparent;}
+  .log-item{
+    display:flex;justify-content:space-between;align-items:center;
+    padding:10px 14px;border-bottom:1px solid rgba(41,51,66,0.5);
+    font-size:0.84rem;transition:background .15s ease;
+  }
+  .log-item:hover{background:var(--surface-2);}
+  .log-item:last-child{border-bottom:none;}
+  .log-item .tag{
+    font-family:'JetBrains Mono',monospace;color:var(--text-dim);font-size:0.76rem;
+    display:flex;flex-direction:column;gap:2px;
+  }
+  .log-item .tag .tag-id{color:var(--text);font-weight:600;}
+  .badge{
+    font-size:0.66rem;font-weight:700;padding:3px 9px;border-radius:6px;
+    letter-spacing:0.04em;text-transform:uppercase;white-space:nowrap;
+  }
+  .badge.ok{background:var(--teal-soft);color:var(--teal);border:1px solid rgba(45,212,191,0.2);}
+  .badge.bad{background:var(--red-soft);color:var(--red);border:1px solid rgba(239,83,80,0.2);}
+  .empty{
+    color:var(--text-dim);font-size:0.84rem;padding:20px 0;text-align:center;
+    font-style:italic;
+  }
+
+  /* ─── SUMMARY DASHBOARD ─── */
+  .dashboard{
+    display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-top:16px;
+  }
+  .dash-card{
+    background:var(--surface);border:1px solid var(--border);
+    border-radius:var(--radius);padding:14px;text-align:center;
+    transition:var(--transition);
+  }
+  .dash-card:hover{border-color:rgba(242,183,5,0.2);transform:translateY(-2px);}
+  .dash-card .dash-val{
+    font-family:'JetBrains Mono',monospace;font-size:1.6rem;font-weight:700;
+    line-height:1;
+  }
+  .dash-card .dash-label{
+    font-size:0.66rem;color:var(--text-dim);margin-top:6px;
+    text-transform:uppercase;letter-spacing:0.08em;
+    font-family:'JetBrains Mono',monospace;
+  }
+  .dash-card.c-amber .dash-val{color:var(--amber);}
+  .dash-card.c-teal .dash-val{color:var(--teal);}
+  .dash-card.c-red .dash-val{color:var(--red);}
+
+  /* ─── ACTION BAR ─── */
+  .action-bar{
+    display:flex;gap:8px;margin-top:18px;flex-wrap:wrap;
+  }
+  .action-bar .btn{flex:1;min-width:120px;}
+
+  /* ─── TOAST ─── */
+  .toast-container{
+    position:fixed;bottom:20px;left:50%;transform:translateX(-50%);
+    z-index:200;display:flex;flex-direction:column;gap:8px;
+    pointer-events:none;max-width:400px;width:calc(100% - 32px);
+  }
+  .toast{
+    padding:12px 16px;border-radius:10px;
+    font-family:'JetBrains Mono',monospace;font-size:0.82rem;
+    display:flex;align-items:center;gap:8px;
+    animation:toastIn .35s ease-out;
+    pointer-events:auto;
+    backdrop-filter:blur(12px);
+    box-shadow:0 8px 32px rgba(0,0,0,0.4);
+  }
+  .toast.ok{background:rgba(45,212,191,0.15);color:var(--teal);border:1px solid rgba(45,212,191,0.3);}
+  .toast.err{background:rgba(239,83,80,0.15);color:var(--red);border:1px solid rgba(239,83,80,0.3);}
+  .toast.info{background:rgba(96,165,250,0.15);color:var(--blue);border:1px solid rgba(96,165,250,0.3);}
+  @keyframes toastIn{from{opacity:0;transform:translateY(16px);}to{opacity:1;transform:translateY(0);}}
+  @keyframes toastOut{from{opacity:1;transform:translateY(0);}to{opacity:0;transform:translateY(-10px);}}
+
+  /* ─── MODAL OVERLAY ─── */
+  .modal-overlay{
+    position:fixed;inset:0;background:rgba(0,0,0,0.65);
+    backdrop-filter:blur(6px);z-index:100;
+    display:flex;align-items:center;justify-content:center;padding:20px;
+    animation:fadeIn .25s ease-out;
+  }
+  @keyframes fadeIn{from{opacity:0;}to{opacity:1;}}
+  .modal{
+    background:var(--surface);border:1px solid var(--border);
+    border-radius:var(--radius-lg);padding:24px;
+    max-width:420px;width:100%;box-shadow:0 16px 48px rgba(0,0,0,0.5);
+    animation:modalIn .3s ease-out;
+  }
+  @keyframes modalIn{from{transform:scale(0.95);opacity:0;}to{transform:scale(1);opacity:1;}}
+  .modal h3{
+    font-family:'Space Grotesk',sans-serif;font-size:1.1rem;
+    margin-bottom:14px;display:flex;align-items:center;gap:8px;
+  }
+  .modal pre{
+    background:var(--surface-2);border:1px solid var(--border);
+    border-radius:8px;padding:12px;font-size:0.78rem;
+    font-family:'JetBrains Mono',monospace;color:var(--text-dim);
+    overflow-x:auto;max-height:300px;overflow-y:auto;margin:12px 0;
+    white-space:pre-wrap;word-break:break-all;
+  }
+
+  /* ─── UTILITY ─── */
+  .hidden{display:none !important;}
+  .spin{
+    display:inline-block;width:16px;height:16px;
+    border:2px solid rgba(0,0,0,0.2);border-top-color:#1a1400;
+    border-radius:50%;animation:spin .65s linear infinite;
+  }
+  @keyframes spin{to{transform:rotate(360deg);}}
+  .shimmer{
+    background:linear-gradient(90deg,var(--surface-2) 25%,var(--surface-3) 50%,var(--surface-2) 75%);
+    background-size:200% 100%;animation:shimmer 1.5s infinite;border-radius:6px;
+  }
+  @keyframes shimmer{0%{background-position:200% 0;}100%{background-position:-200% 0;}}
+
+  /* ─── SCROLLBAR ─── */
+  ::-webkit-scrollbar{width:4px;}
+  ::-webkit-scrollbar-track{background:transparent;}
+  ::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px;}
+
+  /* ─── PRINT ─── */
+  @media print{
+    body{background:#fff !important;color:#111 !important;}
+    body::before,.toast-container,#scanSection .scanner-wrap,.scan-toggle,.manual-row,
+    .btn,.conn-badge,.action-bar,.log-toolbar,.mismatch-form{display:none !important;}
+    header.top{position:static;background:#fff;border-bottom:2px solid #111;backdrop-filter:none;}
+    .brand .dot{box-shadow:none;background:#333;}
+    .card,.tag-card,.dash-card{
+      background:#fff !important;border-color:#ccc !important;
+      box-shadow:none !important;color:#111 !important;
+    }
+    .card::before{display:none;}
+    .tag-number{color:#b8860b !important;}
+    .stamp.verified{color:#0d9488 !important;border-color:#0d9488 !important;background:#f0fdfa !important;}
+    .stamp.mismatch{color:#dc2626 !important;border-color:#dc2626 !important;background:#fef2f2 !important;}
+    .stats-bar,.label-eyebrow,.tag-meta .k,.log-item .tag{color:#666 !important;}
+    .log-item{border-color:#eee !important;}
+    .badge.ok{background:#f0fdfa !important;color:#0d9488 !important;border-color:#0d9488 !important;}
+    .badge.bad{background:#fef2f2 !important;color:#dc2626 !important;border-color:#dc2626 !important;}
+    .dash-card .dash-val{color:#111 !important;}
+    .log-list{max-height:none !important;overflow:visible !important;}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top" id="topHeader">
+    <div class="header-row">
+      <div class="brand"><span class="dot"></span> BAAZ AUDIT</div>
+      <div class="conn-badge" id="connBadge" title="Connection status">
+        <span class="indicator"></span>
+        <span id="connLabel">Disconnected</span>
+      </div>
+    </div>
+    <div class="stats-bar">
+      <span class="stat all">scanned <b id="statScanned">0</b></span>
+      <span class="stat ok">verified <b id="statVerified">0</b></span>
+      <span class="stat bad">mismatch <b id="statMismatch">0</b></span>
+      <span class="session-timer hidden" id="sessionTimer">
+        <span class="timer-icon"></span>
+        <span id="timerDisplay">00:00</span>
+      </span>
+    </div>
+  </header>
+
+  <!-- ═══ SETUP ═══ -->
+  <section id="setupSection">
+    <div class="label-eyebrow">Connect to Snipe-IT</div>
+    <div class="card">
+      <div class="field">
+        <label>Snipe-IT URL</label>
+        <input id="siUrl" type="url" placeholder="https://your-instance.snipeitapp.com" autocomplete="url">
+      </div>
+      <div class="field">
+        <label>API Token</label>
+        <input id="siToken" type="password" placeholder="Settings → API Keys → Personal Access Token">
+      </div>
+      <button class="btn btn-primary" id="testConnBtn">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        Test connection &amp; start
+      </button>
+      <div id="setupStatus"></div>
+      <div class="hint">
+        🔒 Token sirf session me rehta hai — reload pe dubara daalna hoga. Kahin save nahi hota.<br>
+        ⚡ URL yaad rakha jaayega (localStorage me) taaki baar-baar na daalna pade.<br>
+        🌐 Agar CORS error aaye: Snipe-IT reverse proxy me <code>Access-Control-Allow-Origin</code> header add karo.
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ SCANNER ═══ -->
+  <section id="scanSection" class="hidden">
+
+    <!-- Dashboard -->
+    <div class="label-eyebrow">Session overview</div>
+    <div class="dashboard">
+      <div class="dash-card c-amber">
+        <div class="dash-val" id="dashScanned">0</div>
+        <div class="dash-label">Scanned</div>
+      </div>
+      <div class="dash-card c-teal">
+        <div class="dash-val" id="dashVerified">0</div>
+        <div class="dash-label">Verified</div>
+      </div>
+      <div class="dash-card c-red">
+        <div class="dash-val" id="dashMismatch">0</div>
+        <div class="dash-label">Mismatch</div>
+      </div>
+    </div>
+
+    <!-- Scanner -->
+    <div class="label-eyebrow" style="margin-top:22px;">Scan asset tag</div>
+    <div class="card">
+      <div class="scanner-wrap">
+        <div id="reader"></div>
+        <div class="scan-line" id="scanLine"></div>
+      </div>
+      <div class="btn-row scan-toggle" style="margin-top:12px;">
+        <button class="btn btn-outline" id="toggleScanBtn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+          Stop camera
+        </button>
+        <button class="btn btn-outline" id="reconnectBtn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M1 4v6h6M23 20v-6h-6"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/></svg>
+          Reconnect
+        </button>
+      </div>
+      <div class="manual-row">
+        <input id="manualTag" type="text" placeholder="ya asset tag type karo...">
+        <button class="btn btn-primary btn-sm" id="manualLookupBtn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          Lookup
+        </button>
+      </div>
+      <div id="scanStatus"></div>
+    </div>
+
+    <!-- Asset result -->
+    <div id="assetCard" class="tag-card hidden">
+      <div class="stamp hidden" id="stamp"></div>
+      <div class="tag-number" id="tagNumber">—</div>
+      <div class="tag-name" id="tagName">—</div>
+      <div class="tag-meta">
+        <div class="k">Model</div><div class="v" id="tagModel">—</div>
+        <div class="k">Serial</div><div class="v" id="tagSerial">—</div>
+        <div class="k">Location</div><div class="v" id="tagLocation">—</div>
+        <div class="k">Assigned</div><div class="v" id="tagAssigned">—</div>
+        <div class="k">Status</div><div class="v" id="tagStatus">—</div>
+        <div class="k">Category</div><div class="v" id="tagCategory">—</div>
+        <div class="k">Last audit</div><div class="v" id="tagLastAudit">—</div>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn btn-teal" id="confirmBtn">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+          Confirm &amp; audit
+        </button>
+        <button class="btn btn-red" id="mismatchBtn">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+          Mismatch
+        </button>
+      </div>
+
+      <div class="mismatch-form hidden" id="mismatchForm">
+        <label>Actual location</label>
+        <select id="actualLocation"><option value="">— select —</option></select>
+        <label>Remarks</label>
+        <textarea id="remarksInput" placeholder="e.g. found in Warehouse B, not with assigned user"></textarea>
+        <button class="btn btn-red" id="submitMismatchBtn" style="margin-top:12px;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+          Submit mismatch &amp; audit
+        </button>
+      </div>
+      <div id="actionStatus"></div>
+    </div>
+
+    <!-- Session Log -->
+    <div class="label-eyebrow" style="margin-top:24px;">Session log</div>
+    <div class="card" style="padding:12px 14px;">
+      <div class="log-toolbar">
+        <input type="text" id="logSearch" placeholder="🔍 Search tag or status...">
+        <button class="btn-icon" id="exportCsvBtn" title="Export CSV">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+        </button>
+        <button class="btn-icon" id="printReportBtn" title="Print audit report">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+        </button>
+      </div>
+      <div class="log-list" id="logList">
+        <div class="empty">Ab tak koi asset scan nahi hua</div>
+      </div>
+    </div>
+
+    <!-- Actions -->
+    <div class="action-bar">
+      <button class="btn btn-outline" id="resetSessionBtn">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+        New session
+      </button>
+      <button class="btn btn-outline" id="disconnectBtn">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18.36 6.64a9 9 0 11-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>
+        Disconnect
+      </button>
+    </div>
+  </section>
+
+</div>
+
+<!-- Toast Container -->
+<div class="toast-container" id="toastContainer"></div>
+
+<script>
+// ═══════════════════════════════════════════════
+//  BAAZ ASSET AUDIT SCANNER — Enhanced Edition
+// ═══════════════════════════════════════════════
+
+let SI_URL = "", SI_TOKEN = "";
+let locationsMap = {};
+let currentAsset = null;
+let scannerRunning = false;
+let html5QrCode = null;
+let sessionLog = [];
+let counts = { scanned: 0, verified: 0, mismatch: 0 };
+let sessionStartTime = null;
+let sessionTimerInterval = null;
+
+const $ = (id) => document.getElementById(id);
+
+// ─── localStorage: remember URL ───
+(function loadSaved(){
+  const saved = localStorage.getItem("baaz_snipeit_url");
+  if(saved) $("siUrl").value = saved;
+})();
+
+// ─── Utility ───
+function setStatus(el, msg, type){
+  el.innerHTML = msg ? `<div class="status-msg ${type}">${msg}</div>` : "";
+}
+
+function showToast(msg, type="ok", duration=3500){
+  const container = $("toastContainer");
+  const toast = document.createElement("div");
+  toast.className = `toast ${type}`;
+  const icons = {
+    ok: '✓',
+    err: '✗',
+    info: 'ℹ'
+  };
+  toast.innerHTML = `<span>${icons[type]||''}</span> ${msg}`;
+  container.appendChild(toast);
+  setTimeout(() => {
+    toast.style.animation = "toastOut .3s ease-out forwards";
+    setTimeout(() => toast.remove(), 300);
+  }, duration);
+}
+
+function vibrate(pattern){
+  if(navigator.vibrate) navigator.vibrate(pattern);
+}
+
+function playBeep(freq=880, dur=120){
+  try{
+    const ctx = new (window.AudioContext||window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);gain.connect(ctx.destination);
+    osc.frequency.value = freq;
+    gain.gain.setValueAtTime(0.08, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + dur/1000);
+    osc.start();osc.stop(ctx.currentTime + dur/1000);
+  }catch(e){}
+}
+
+function api(path, options={}){
+  return fetch(SI_URL + "/api/v1" + path, {
+    ...options,
+    headers: {
+      "Authorization": "Bearer " + SI_TOKEN,
+      "Accept": "application/json",
+      "Content-Type": "application/json",
+      ...(options.headers||{})
+    }
+  });
+}
+
+// ─── Session Timer ───
+function startSessionTimer(){
+  sessionStartTime = Date.now();
+  $("sessionTimer").classList.remove("hidden");
+  sessionTimerInterval = setInterval(() => {
+    const elapsed = Math.floor((Date.now() - sessionStartTime) / 1000);
+    const m = String(Math.floor(elapsed / 60)).padStart(2, '0');
+    const s = String(elapsed % 60).padStart(2, '0');
+    $("timerDisplay").textContent = `${m}:${s}`;
+  }, 1000);
+}
+function stopSessionTimer(){
+  clearInterval(sessionTimerInterval);
+  sessionTimerInterval = null;
+}
+
+// ═══ SETUP ═══
+$("testConnBtn").addEventListener("click", async () => {
+  const url = $("siUrl").value.trim().replace(/\/$/, "");
+  const token = $("siToken").value.trim();
+  if(!url || !token){
+    setStatus($("setupStatus"), "URL aur token dono chahiye", "err");
+    vibrate(200);
+    return;
+  }
+  SI_URL = url; SI_TOKEN = token;
+  localStorage.setItem("baaz_snipeit_url", url);
+
+  $("testConnBtn").innerHTML = '<span class="spin"></span> Testing...';
+  $("testConnBtn").disabled = true;
+
+  try{
+    const resp = await api("/hardware?limit=1");
+    if(!resp.ok) throw new Error("HTTP " + resp.status);
+    await resp.json();
+
+    // Load locations for mismatch dropdown
+    try{
+      const locResp = await api("/locations?limit=500");
+      const locData = await locResp.json();
+      (locData.rows||[]).forEach(r => locationsMap[r.name] = r.id);
+      const sel = $("actualLocation");
+      sel.innerHTML = '<option value="">— select —</option>';
+      Object.keys(locationsMap).sort().forEach(name => {
+        const opt = document.createElement("option");
+        opt.value = name; opt.textContent = name;
+        sel.appendChild(opt);
+      });
+    }catch(e){ /* non-fatal */ }
+
+    // Go live
+    $("connBadge").classList.add("live");
+    $("connLabel").textContent = "Connected";
+    setStatus($("setupStatus"), "Connected ✓ — Redirecting to scanner...", "ok");
+    vibrate([50, 50, 50]);
+    playBeep(660, 100);
+
+    setTimeout(() => {
+      $("setupSection").classList.add("hidden");
+      $("scanSection").classList.remove("hidden");
+      startScanner();
+      startSessionTimer();
+      showToast("Snipe-IT se connected! Scanner ready.", "ok");
+    }, 600);
+
+  }catch(err){
+    setStatus($("setupStatus"),
+      "Connection failed: " + err.message + " — CORS ya token check karo.", "err");
+    vibrate(300);
+  }finally{
+    $("testConnBtn").innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg> Test connection & start`;
+    $("testConnBtn").disabled = false;
+  }
+});
+
+// ═══ SCANNER ═══
+function startScanner(){
+  html5QrCode = new Html5Qrcode("reader", {
+    formatsToSupport: [
+      Html5QrcodeSupportedFormats.QR_CODE,
+      Html5QrcodeSupportedFormats.CODE_128,
+      Html5QrcodeSupportedFormats.CODE_39,
+      Html5QrcodeSupportedFormats.EAN_13
+    ],
+    verbose: false
+  });
+  html5QrCode.start(
+    { facingMode: "environment" },
+    { fps: 12, qrbox: { width: 250, height: 180 } },
+    (decodedText) => onDecoded(decodedText),
+    () => {}
+  ).then(() => {
+    scannerRunning = true;
+    $("toggleScanBtn").innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><rect x="6" y="6" width="12" height="12" rx="2"/></svg> Stop camera`;
+    $("scanLine").classList.remove("hidden");
+  }).catch(err => {
+    setStatus($("scanStatus"), "Camera start nahi ho payi — manual tag entry use karo. (" + err + ")", "err");
+    $("scanLine").classList.add("hidden");
+  });
+}
+
+function stopScanner(){
+  if(html5QrCode && scannerRunning){
+    html5QrCode.stop().then(() => { scannerRunning = false; });
+    $("scanLine").classList.add("hidden");
+  }
+}
+
+$("toggleScanBtn").addEventListener("click", () => {
+  if(scannerRunning){
+    stopScanner();
+    $("toggleScanBtn").innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polygon points="5 3 19 12 5 21 5 3"/></svg> Start camera`;
+  } else {
+    startScanner();
+  }
+});
+$("reconnectBtn").addEventListener("click", () => {
+  stopScanner();
+  setTimeout(startScanner, 400);
+  showToast("Camera reconnecting...", "info", 1500);
+});
+
+let lastScan = "";
+let lastScanTime = 0;
+function onDecoded(text){
+  const now = Date.now();
+  if(text === lastScan && (now - lastScanTime) < 3000) return;
+  lastScan = text; lastScanTime = now;
+  vibrate([50, 30, 50]);
+  playBeep(1200, 80);
+  lookupAsset(text);
+}
+
+// Manual lookup
+$("manualLookupBtn").addEventListener("click", () => {
+  const tag = $("manualTag").value.trim();
+  if(tag){ lookupAsset(tag); $("manualTag").value = ""; }
+});
+$("manualTag").addEventListener("keydown", (e) => {
+  if(e.key === "Enter"){
+    const tag = $("manualTag").value.trim();
+    if(tag){ lookupAsset(tag); $("manualTag").value = ""; }
+  }
+});
+
+async function lookupAsset(tag){
+  setStatus($("scanStatus"), `<span class="shimmer" style="display:inline-block;width:160px;height:14px;"></span> Looking up ${tag}...`, "ok");
+  try{
+    const resp = await api("/hardware/bytag/" + encodeURIComponent(tag));
+    if(!resp.ok) throw new Error("Asset not found (HTTP " + resp.status + ")");
+    const asset = await resp.json();
+    if(asset.status === "error") throw new Error(asset.messages || "Not found");
+    showAsset(asset);
+    setStatus($("scanStatus"), "", "");
+  }catch(err){
+    setStatus($("scanStatus"), err.message, "err");
+    vibrate(200);
+    showToast(err.message, "err");
+  }
+}
+
+function showAsset(asset){
+  currentAsset = asset;
+  counts.scanned++; updateStats();
+  $("assetCard").classList.remove("hidden");
+  $("stamp").classList.add("hidden");
+  $("mismatchForm").classList.add("hidden");
+  setStatus($("actionStatus"), "", "");
+
+  $("tagNumber").textContent = asset.asset_tag || "—";
+  $("tagName").textContent = asset.name || (asset.model && asset.model.name) || "—";
+  $("tagModel").textContent = (asset.model && asset.model.name) || "—";
+  $("tagSerial").textContent = asset.serial || "—";
+  $("tagLocation").textContent = (asset.location && asset.location.name) || "Unassigned";
+  $("tagAssigned").textContent = (asset.assigned_to && asset.assigned_to.name) || "—";
+  $("tagStatus").textContent = (asset.status_label && asset.status_label.name) || "—";
+  $("tagCategory").textContent = (asset.category && asset.category.name) || "—";
+  $("tagLastAudit").textContent = asset.last_audit_date || "Never audited";
+
+  // Re-trigger card animation
+  const card = $("assetCard");
+  card.style.animation = "none";
+  card.offsetHeight; // force reflow
+  card.style.animation = "slideIn .35s ease-out";
+
+  showToast(`Asset found: ${asset.asset_tag}`, "ok", 2000);
+}
+
+// ═══ AUDIT ACTIONS ═══
+$("confirmBtn").addEventListener("click", () => doAudit(null, "Physical audit confirmed match."));
+$("mismatchBtn").addEventListener("click", () => $("mismatchForm").classList.toggle("hidden"));
+$("submitMismatchBtn").addEventListener("click", () => {
+  const loc = $("actualLocation").value;
+  const remarks = $("remarksInput").value.trim();
+  doAudit(loc ? locationsMap[loc] : null, "Mismatch: " + (remarks || "no remarks"), true);
+});
+
+async function doAudit(locationId, note, isMismatch){
+  if(!currentAsset) return;
+  setStatus($("actionStatus"), '<span class="shimmer" style="display:inline-block;width:120px;height:14px;"></span> Submitting...', "ok");
+
+  try{
+    const nextDate = new Date();
+    nextDate.setFullYear(nextDate.getFullYear() + 1);
+    const payload = { note, next_audit_date: nextDate.toISOString().slice(0,10) };
+    if(locationId) payload.location_id = locationId;
+
+    const resp = await api("/hardware/" + currentAsset.id + "/audit", {
+      method: "POST", body: JSON.stringify(payload)
+    });
+    if(!resp.ok) throw new Error("HTTP " + resp.status);
+    await resp.json();
+
+    if(isMismatch){
+      counts.mismatch++;
+      $("stamp").textContent = "MISMATCH";
+      $("stamp").className = "stamp mismatch";
+      vibrate([100, 50, 100, 50, 100]);
+      playBeep(300, 200);
+      showToast(`Mismatch reported: ${currentAsset.asset_tag}`, "err");
+    } else {
+      counts.verified++;
+      $("stamp").textContent = "VERIFIED";
+      $("stamp").className = "stamp verified";
+      vibrate([50, 50, 50]);
+      playBeep(880, 100);
+      showToast(`Audit saved: ${currentAsset.asset_tag}`, "ok");
+    }
+    $("stamp").classList.remove("hidden");
+    updateStats();
+
+    logEntry(
+      currentAsset.asset_tag,
+      currentAsset.name || (currentAsset.model && currentAsset.model.name) || "",
+      isMismatch ? "bad" : "ok",
+      isMismatch ? "Mismatch" : "Verified"
+    );
+    setStatus($("actionStatus"), "Saved to Snipe-IT ✓", "ok");
+    $("mismatchForm").classList.add("hidden");
+    $("remarksInput").value = "";
+
+  }catch(err){
+    setStatus($("actionStatus"), "Failed: " + err.message, "err");
+    vibrate(300);
+    showToast("Audit failed: " + err.message, "err");
+  }
+}
+
+// ═══ SESSION LOG ═══
+function logEntry(tag, name, badgeType, label){
+  sessionLog.unshift({ tag, name, badgeType, label, time: new Date().toLocaleTimeString() });
+  renderLog();
+}
+
+function renderLog(filter=""){
+  const list = $("logList");
+  const filtered = filter
+    ? sessionLog.filter(e =>
+        e.tag.toLowerCase().includes(filter) ||
+        e.name.toLowerCase().includes(filter) ||
+        e.label.toLowerCase().includes(filter))
+    : sessionLog;
+
+  if(filtered.length === 0){
+    list.innerHTML = `<div class="empty">${filter ? 'Koi match nahi mila' : 'Ab tak koi asset scan nahi hua'}</div>`;
+    return;
+  }
+  list.innerHTML = "";
+  filtered.forEach(e => {
+    const row = document.createElement("div");
+    row.className = "log-item";
+    row.innerHTML = `
+      <span class="tag">
+        <span class="tag-id">${e.tag}</span>
+        <span>${e.name ? e.name + ' · ' : ''}${e.time}</span>
+      </span>
+      <span class="badge ${e.badgeType}">${e.label}</span>`;
+    list.appendChild(row);
+  });
+}
+
+$("logSearch").addEventListener("input", (e) => {
+  renderLog(e.target.value.trim().toLowerCase());
+});
+
+// ═══ STATS ═══
+function updateStats(){
+  $("statScanned").textContent = counts.scanned;
+  $("statVerified").textContent = counts.verified;
+  $("statMismatch").textContent = counts.mismatch;
+  $("dashScanned").textContent = counts.scanned;
+  $("dashVerified").textContent = counts.verified;
+  $("dashMismatch").textContent = counts.mismatch;
+
+  // Animate dash cards
+  ["dashScanned","dashVerified","dashMismatch"].forEach(id => {
+    const el = $(id);
+    el.style.transform = "scale(1.15)";
+    setTimeout(() => el.style.transform = "scale(1)", 200);
+  });
+}
+
+// ═══ CSV EXPORT ═══
+$("exportCsvBtn").addEventListener("click", () => {
+  if(sessionLog.length === 0){
+    showToast("Export ke liye pehle kuch scan karo!", "info");
+    return;
+  }
+  const elapsed = sessionStartTime ? Math.floor((Date.now() - sessionStartTime) / 1000) : 0;
+  const mins = Math.floor(elapsed / 60);
+  const secs = elapsed % 60;
+
+  let csv = "Asset Tag,Asset Name,Status,Time\n";
+  sessionLog.forEach(e => {
+    csv += `"${e.tag}","${e.name}","${e.label}","${e.time}"\n`;
+  });
+  csv += `\n"--- Session Summary ---"\n`;
+  csv += `"Total Scanned","${counts.scanned}"\n`;
+  csv += `"Verified","${counts.verified}"\n`;
+  csv += `"Mismatches","${counts.mismatch}"\n`;
+  csv += `"Duration","${mins}m ${secs}s"\n`;
+  csv += `"Exported","${new Date().toLocaleString()}"\n`;
+
+  const blob = new Blob([csv], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `baaz_audit_${new Date().toISOString().slice(0,10)}_${Date.now()}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast("CSV downloaded ✓", "ok");
+  vibrate(50);
+});
+
+// ═══ PRINT REPORT ═══
+$("printReportBtn").addEventListener("click", () => {
+  if(sessionLog.length === 0){
+    showToast("Print ke liye pehle kuch scan karo!", "info");
+    return;
+  }
+  window.print();
+});
+
+// ═══ SESSION CONTROLS ═══
+$("resetSessionBtn").addEventListener("click", () => {
+  if(sessionLog.length > 0 && !confirm("Current session ka data clear ho jaayega. Continue?")) return;
+  sessionLog = [];
+  counts = { scanned: 0, verified: 0, mismatch: 0 };
+  updateStats();
+  renderLog();
+  $("assetCard").classList.add("hidden");
+  currentAsset = null;
+  stopSessionTimer();
+  startSessionTimer();
+  showToast("New session started", "info");
+});
+
+$("disconnectBtn").addEventListener("click", () => {
+  if(sessionLog.length > 0 && !confirm("Disconnect karne se session data chala jaayega. Continue?")) return;
+  stopScanner();
+  stopSessionTimer();
+  SI_URL = ""; SI_TOKEN = "";
+  sessionLog = [];
+  counts = { scanned: 0, verified: 0, mismatch: 0 };
+  currentAsset = null;
+  updateStats();
+  $("scanSection").classList.add("hidden");
+  $("setupSection").classList.remove("hidden");
+  $("connBadge").classList.remove("live");
+  $("connLabel").textContent = "Disconnected";
+  $("sessionTimer").classList.add("hidden");
+  $("assetCard").classList.add("hidden");
+  $("siToken").value = "";
+  setStatus($("setupStatus"), "", "");
+  showToast("Disconnected from Snipe-IT", "info");
+});
+
+// ─── Keyboard shortcuts ───
+document.addEventListener("keydown", (e) => {
+  // Ctrl+E = export CSV
+  if(e.ctrlKey && e.key === "e"){
+    e.preventDefault();
+    $("exportCsvBtn").click();
+  }
+  // Ctrl+P = print (let browser handle, but our print styles will apply)
+  // Escape = close mismatch form
+  if(e.key === "Escape"){
+    $("mismatchForm").classList.add("hidden");
+  }
+});
+</script>
+</body>
+</html>
