@@ -412,80 +412,115 @@ class App {
 
   #parseScannedText(text) {
     text = text.trim();
-    // If it's a URL, let's extract the last part
+    // If it's a URL, extract the last segment
     if (text.startsWith('http://') || text.startsWith('https://')) {
-      // e.g. https://domain.com/hardware/BZLAP001
+      // e.g. https://baazbikes.snipe-it.io/hardware/1
+      //      https://domain.com/hardware/BZLAP001
       const parts = text.split('/');
       let last = parts.pop();
       if (!last && parts.length > 0) {
         last = parts.pop(); // handle trailing slash
       }
-      return last.trim();
+      // Return object with extracted value + flag if it looks like a Snipe-IT hardware URL ID
+      const extracted = (last || '').trim();
+      const isSnipeUrl = text.includes('/hardware/');
+      return { tag: extracted, isSnipeUrl };
     }
 
     // Check for Snipe-IT multiline label format
-    // Requires a newline or start of string before T to avoid matching 'https'
     const match = text.match(/(?:^|\n)\s*T\s*:?\s*([A-Za-z0-9_-]+)/i);
     if (match && match[1]) {
-      return match[1].trim();
+      return { tag: match[1].trim(), isSnipeUrl: false };
     }
     // Try catching a tag anywhere if it starts with BZ
     const bzMatch = text.match(/\b(BZ[A-Za-z0-9_-]+)/i);
     if (bzMatch && bzMatch[1]) {
-        return bzMatch[1].trim();
+      return { tag: bzMatch[1].trim(), isSnipeUrl: false };
     }
 
     // Fallback: assume the whole string is the tag
-    return text.trim();
+    return { tag: text.trim(), isSnipeUrl: false };
   }
 
   onScan(text) {
     feedback.scanSuccess();
-    const tag = this.#parseScannedText(text);
-    if (!tag) return;
-    this.lookupAsset(tag, text);
+    const parsed = this.#parseScannedText(text);
+    if (!parsed || !parsed.tag) return;
+    this.lookupAsset(parsed.tag, text, parsed.isSnipeUrl);
   }
 
   manualLookup() {
-    let tag = $('inputManualTag').value.trim();
-    if (!tag) return;
+    let input = $('inputManualTag').value.trim();
+    if (!input) return;
     $('inputManualTag').value = '';
     
-    tag = this.#parseScannedText(tag);
-    this.lookupAsset(tag);
+    const parsed = this.#parseScannedText(input);
+    this.lookupAsset(parsed.tag, '', parsed.isSnipeUrl);
   }
 
-  async lookupAsset(tag, rawText = '') {
+  async lookupAsset(tag, rawText = '', isSnipeUrl = false) {
     if (!this.api) return;
 
     setLoading($('scanStatus'), `Looking up [${tag}]...`);
 
     try {
       let asset;
-      try {
-        asset = await this.api.getAssetByTag(tag);
-      } catch (tagErr) {
-        // If tag lookup fails with 404 and the tag is just a number, it might be a DB ID from a URL QR code
-        if (tagErr.status === 404 && /^\d+$/.test(tag)) {
-          showToast(`DEBUG: Attempting to fetch by ID ${tag}`, 'info');
+
+      if (isSnipeUrl && /^\d+$/.test(tag)) {
+        // QR code is a Snipe-IT URL like /hardware/1 — the number is the DB ID
+        // Strategy: Try ID first, then search all hardware to find matching ID
+        try {
+          asset = await this.api.getAssetById(tag);
+        } catch (idErr) {
+          // ID direct lookup failed — search all hardware to find this ID
           try {
-            asset = await this.api.getAssetById(tag);
-          } catch (idErr) {
-            if (idErr.status === 404) {
-              throw new Error(`[V12 DEBUG] The QR code points to Asset ID ${tag}, but this ID returned 404 from Snipe-IT API. Please type the Asset Tag manually.`);
+            const searchRes = await this.api.searchAssets(tag, 50);
+            if (searchRes && searchRes.rows) {
+              asset = searchRes.rows.find(a => String(a.id) === String(tag));
             }
-            throw idErr;
+          } catch (searchErr) {
+            // search also failed
           }
-        } else {
-          throw tagErr;
+
+          if (!asset) {
+            // Last resort: list hardware and find by ID
+            try {
+              const listRes = await this.api.listAssets({ limit: 500 });
+              if (listRes && listRes.rows) {
+                asset = listRes.rows.find(a => String(a.id) === String(tag));
+              }
+            } catch (listErr) {
+              // list also failed
+            }
+          }
+
+          if (!asset) {
+            throw new Error(`Asset with ID ${tag} not found. The QR code points to Snipe-IT hardware ID ${tag} but the API cannot find it. Try entering the Asset Tag (e.g. BZLAP005) manually.`);
+          }
+        }
+      } else {
+        // Normal flow: try by asset tag first
+        try {
+          asset = await this.api.getAssetByTag(tag);
+        } catch (tagErr) {
+          if (tagErr.status === 404 && /^\d+$/.test(tag)) {
+            // Might be a DB ID
+            try {
+              asset = await this.api.getAssetById(tag);
+            } catch (idErr) {
+              throw tagErr; // throw original tag error
+            }
+          } else {
+            throw tagErr;
+          }
         }
       }
+
       this.showAsset(asset);
       setStatus($('scanStatus'), '', '');
     } catch (err) {
       setStatus($('scanStatus'), `Tag [${tag}]: ${err.message}`, 'err');
       feedback.error();
-      // Show both the extracted tag and the raw QR text for debugging
       const debugText = rawText ? `(Extracted: ${tag} | Raw QR: ${rawText})` : `(Searched for: ${tag})`;
       showToast(`${err.message} ${debugText}`, 'err', 6000);
     }
