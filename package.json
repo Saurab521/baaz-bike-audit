@@ -2,12 +2,5 @@
   "name": "baaz-bike-audit",
   "version": "1.0.0",
   "description": "Baaz Bike Asset Audit and Report Tool",
-  "type": "module",
-  "scripts": {
-    "start": "node server.js",
-    "dev": "node server.js"
-  },
-  "engines": {
-    "node": ">=18"
-  }
+  "private": true
 }

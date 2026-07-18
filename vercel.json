@@ -1,4 +1,8 @@
 {
+  "framework": null,
+  "buildCommand": "",
+  "outputDirectory": ".",
+  "installCommand": "",
   "rewrites": [
     { "source": "/proxy", "destination": "/api/proxy" }
   ]
