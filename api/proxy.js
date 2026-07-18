@@ -33,10 +33,16 @@ export default async function handler(req, res) {
   forwardHeaders['host'] = targetUrl.host;
 
   try {
+    // Vercel auto-parses req.body into an object — stringify it back for the proxy request
+    let body = undefined;
+    if (req.method !== 'GET' && req.method !== 'HEAD' && req.body) {
+      body = typeof req.body === 'string' ? req.body : JSON.stringify(req.body);
+    }
+
     const fetchRes = await fetch(targetUrl.href, {
       method: req.method,
       headers: forwardHeaders,
-      body: req.method !== 'GET' && req.method !== 'HEAD' ? req.body : undefined,
+      body,
     });
 
     // Forward response headers
