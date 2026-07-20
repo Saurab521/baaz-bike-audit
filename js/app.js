@@ -731,6 +731,7 @@ class App {
     $('tagNumber').textContent = asset.asset_tag || '—';
     $('tagName').textContent =
       asset.name || (asset.model && asset.model.name) || '—';
+    $('tagAssetTag').textContent = asset.asset_tag || '—';
     $('tagModel').textContent =
       (asset.model && asset.model.name) || '—';
     $('tagSerial').textContent = asset.serial || '—';

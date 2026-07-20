@@ -589,6 +589,7 @@
       <div class="tag-number" id="tagNumber">—</div>
       <div class="tag-name" id="tagName">—</div>
       <div class="tag-meta">
+        <div class="k">Asset Tag</div><div class="v" id="tagAssetTag">—</div>
         <div class="k">Model</div><div class="v" id="tagModel">—</div>
         <div class="k">Serial</div><div class="v" id="tagSerial">—</div>
         <div class="k">Location</div><div class="v" id="tagLocation">—</div>
@@ -902,6 +903,7 @@ function showAsset(asset){
 
   $("tagNumber").textContent = asset.asset_tag || "—";
   $("tagName").textContent = asset.name || (asset.model && asset.model.name) || "—";
+  $("tagAssetTag").textContent = asset.asset_tag || "—";
   $("tagModel").textContent = (asset.model && asset.model.name) || "—";
   $("tagSerial").textContent = asset.serial || "—";
   $("tagLocation").textContent = (asset.location && asset.location.name) || "Unassigned";
