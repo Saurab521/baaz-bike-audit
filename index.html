@@ -11,6 +11,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=JetBrains+Mono:wght@400;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/style.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 </head>
 <body>
 
@@ -99,6 +100,30 @@
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
             Lookup
           </button>
+        </div>
+        <div class="serial-scan-section" style="margin-top:10px; padding:10px 0; border-top:1px solid rgba(255,255,255,0.06);">
+          <div class="label-eyebrow" style="margin-bottom:8px; font-size:11px;">🔢 Serial Number Search</div>
+          <div class="manual-row">
+            <input class="input" id="inputSerialNumber" type="text" placeholder="Type serial number...">
+            <button class="btn btn--primary btn--sm" id="btnSerialLookup" style="background: linear-gradient(135deg, #6366f1, #8b5cf6);">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              Search
+            </button>
+          </div>
+          <div style="margin-top:8px;">
+            <button class="btn btn--outline btn--full" id="btnOcrScan" style="background: linear-gradient(135deg, rgba(99,102,241,0.15), rgba(139,92,246,0.15)); border-color: #6366f1;">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="12" cy="12" r="3"/><path d="M3 9h2M19 9h2M3 15h2M19 15h2"/>
+              </svg>
+              📷 Camera se Serial Scan karo (OCR)
+            </button>
+          </div>
+          <div id="ocrStatus" style="margin-top:6px; text-align:center; font-size:12px;"></div>
+          <!-- OCR Preview -->
+          <div class="ocr-preview hidden" id="ocrPreview" style="margin-top:8px; border-radius:10px; overflow:hidden; border:2px solid #6366f1; position:relative;">
+            <canvas id="ocrCanvas" style="width:100%; display:block;"></canvas>
+            <div id="ocrOverlayText" style="position:absolute; bottom:0; left:0; right:0; background:rgba(0,0,0,0.75); color:#a5f3fc; font-family:'JetBrains Mono',monospace; font-size:13px; padding:8px 12px; text-align:center; word-break:break-all;"></div>
+          </div>
         </div>
         <div id="scanStatus"></div>
       </div>

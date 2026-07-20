@@ -28,6 +28,7 @@ class App {
     this.locations = {};       // name → id
     this.activeView = 'viewSetup';
     this.locationAssets = [];  // To store assets for the selected location
+    this.ocrScanning = false;  // OCR scan in progress flag
   }
 
   // ─────────────────────────────────────────
@@ -68,6 +69,15 @@ class App {
     $('inputManualTag').addEventListener('keydown', (e) => {
       if (e.key === 'Enter') this.manualLookup();
     });
+
+    // ── Serial Number Search ──
+    $('btnSerialLookup').addEventListener('click', () => this.serialLookup());
+    $('inputSerialNumber').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') this.serialLookup();
+    });
+
+    // ── OCR Serial Scan ──
+    $('btnOcrScan').addEventListener('click', () => this.ocrScanSerial());
 
     // ── Audit actions ──
     $('btnConfirm').addEventListener('click', () => this.doAudit(false));
@@ -456,6 +466,192 @@ class App {
     
     const parsed = this.#parseScannedText(input);
     this.lookupAsset(parsed.tag, '', parsed.isSnipeUrl);
+  }
+
+  async serialLookup() {
+    const serial = $('inputSerialNumber').value.trim();
+    if (!serial) return;
+    if (!this.api) {
+      showToast('Please connect to Snipe-IT first!', 'err');
+      return;
+    }
+
+    $('inputSerialNumber').value = '';
+    setLoading($('scanStatus'), `Searching serial [${serial}]...`);
+
+    try {
+      const result = await this.api.getAssetBySerial(serial);
+
+      // byserial returns { rows: [...] } format
+      let asset = null;
+      if (result && result.rows && result.rows.length > 0) {
+        asset = result.rows[0]; // Pick the first matching asset
+        if (result.rows.length > 1) {
+          showToast(`${result.rows.length} assets found with this serial — showing first one`, 'info', 4000);
+        }
+      } else if (result && result.id) {
+        // Direct asset object returned
+        asset = result;
+      }
+
+      if (!asset) {
+        throw new Error(`No asset found with serial number: ${serial}`);
+      }
+
+      this.showAsset(asset);
+      setStatus($('scanStatus'), '', '');
+    } catch (err) {
+      setStatus($('scanStatus'), `Serial [${serial}]: ${err.message}`, 'err');
+      feedback.error();
+      showToast(`Serial search failed: ${err.message}`, 'err', 5000);
+    }
+  }
+
+  // ─────────────────────────────────────────
+  //  OCR Serial Number Scan
+  // ─────────────────────────────────────────
+
+  async ocrScanSerial() {
+    if (this.ocrScanning) {
+      showToast('OCR scan already in progress...', 'info');
+      return;
+    }
+
+    if (!this.api) {
+      showToast('Please connect to Snipe-IT first!', 'err');
+      return;
+    }
+
+    // Check if Tesseract is loaded
+    if (typeof Tesseract === 'undefined') {
+      showToast('OCR library not loaded. Please check internet connection.', 'err');
+      return;
+    }
+
+    // Find the video element from the QR scanner
+    const videoEl = document.querySelector('#reader video');
+    if (!videoEl || videoEl.paused || videoEl.ended || !videoEl.srcObject) {
+      showToast('Camera chal nahi rahi! Pehle camera start karo, phir scan karo.', 'err');
+      return;
+    }
+
+    this.ocrScanning = true;
+    const ocrBtn = $('btnOcrScan');
+    const ocrStatus = $('ocrStatus');
+    const ocrPreview = $('ocrPreview');
+    const ocrCanvas = $('ocrCanvas');
+    const ocrOverlay = $('ocrOverlayText');
+
+    ocrBtn.disabled = true;
+    ocrBtn.innerHTML = '<span class="spin"></span> 📷 Scanning... Camera steady rakho!';
+    ocrStatus.textContent = '';
+    ocrStatus.className = '';
+
+    try {
+      // Step 1: Capture frame from video onto canvas
+      const vw = videoEl.videoWidth;
+      const vh = videoEl.videoHeight;
+      ocrCanvas.width = vw;
+      ocrCanvas.height = vh;
+      const ctx = ocrCanvas.getContext('2d');
+      ctx.drawImage(videoEl, 0, 0, vw, vh);
+
+      // Show preview
+      ocrPreview.classList.remove('hidden');
+      ocrOverlay.textContent = '🔍 Processing image...';
+
+      // Step 2: Enhance image for better OCR — increase contrast, greyscale
+      const imgData = ctx.getImageData(0, 0, vw, vh);
+      const data = imgData.data;
+      for (let i = 0; i < data.length; i += 4) {
+        // Convert to greyscale
+        const avg = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+        // Apply threshold for sharper text contrast
+        const val = avg > 128 ? 255 : 0;
+        data[i] = val;
+        data[i + 1] = val;
+        data[i + 2] = val;
+      }
+      ctx.putImageData(imgData, 0, 0);
+
+      // Step 3: Run Tesseract OCR
+      ocrOverlay.textContent = '🧠 OCR processing... thoda wait karo...';
+
+      const result = await Tesseract.recognize(ocrCanvas, 'eng', {
+        logger: (m) => {
+          if (m.status === 'recognizing text' && m.progress) {
+            const pct = Math.round(m.progress * 100);
+            ocrOverlay.textContent = `🧠 Reading text... ${pct}%`;
+          }
+        }
+      });
+
+      const rawText = (result.data.text || '').trim();
+      console.log('[OCR] Raw text:', rawText);
+
+      if (!rawText) {
+        ocrOverlay.textContent = '❌ Kuch nahi mila. Serial number camera ke saamne rakho aur phir try karo.';
+        ocrStatus.textContent = 'No text detected. Try again with better lighting.';
+        ocrStatus.style.color = '#f87171';
+        feedback.error();
+        return;
+      }
+
+      // Step 4: Extract potential serial numbers
+      // Serial numbers are typically alphanumeric, 4+ characters, might have dashes
+      const candidates = rawText
+        .split(/[\n\r\s,;|]+/)
+        .map(s => s.replace(/[^A-Za-z0-9\-_]/g, '').trim())
+        .filter(s => s.length >= 4)
+        .filter(s => /[A-Za-z]/.test(s) || /\d{4,}/.test(s)); // Must have letters or be 4+ digit number
+
+      // Show all detected text
+      ocrOverlay.innerHTML = `
+        <div style="font-size:11px; color:#94a3b8; margin-bottom:4px;">📝 Detected text:</div>
+        <div style="color:#e2e8f0; margin-bottom:6px;">${rawText.replace(/\n/g, ' | ')}</div>
+        ${candidates.length > 0 
+          ? `<div style="font-size:11px; color:#a78bfa;">🎯 Possible serials: ${candidates.join(', ')}</div>` 
+          : '<div style="color:#f87171;">No serial pattern found</div>'
+        }
+      `;
+
+      if (candidates.length > 0) {
+        // Pick the best candidate — prefer longer alphanumeric strings
+        const bestCandidate = candidates.sort((a, b) => b.length - a.length)[0];
+
+        // Auto-fill the serial input
+        $('inputSerialNumber').value = bestCandidate;
+
+        ocrStatus.innerHTML = `✅ Serial detected: <b>${bestCandidate}</b> — Search button dabao ya Enter karo!`;
+        ocrStatus.style.color = '#4ade80';
+        feedback.auditOk();
+        showToast(`Serial detected: ${bestCandidate}`, 'ok', 3000);
+
+        // Focus on serial input so user can press Enter
+        $('inputSerialNumber').focus();
+      } else {
+        ocrStatus.textContent = 'Text mila lekin serial number pattern nahi mila. Manually type karo.';
+        ocrStatus.style.color = '#fbbf24';
+        feedback.error();
+      }
+
+    } catch (err) {
+      console.error('[OCR] Error:', err);
+      ocrOverlay.textContent = `❌ OCR Error: ${err.message}`;
+      ocrStatus.textContent = `OCR failed: ${err.message}`;
+      ocrStatus.style.color = '#f87171';
+      feedback.error();
+      showToast(`OCR scan failed: ${err.message}`, 'err');
+    } finally {
+      this.ocrScanning = false;
+      ocrBtn.disabled = false;
+      ocrBtn.innerHTML = `
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+          <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="12" cy="12" r="3"/><path d="M3 9h2M19 9h2M3 15h2M19 15h2"/>
+        </svg>
+        📷 Camera se Serial Scan karo (OCR)
+      `;
+    }
   }
 
   async lookupAsset(tag, rawText = '', isSnipeUrl = false) {
