@@ -315,6 +315,47 @@
   .stamp.verified{color:var(--teal);border:2px solid var(--teal);background:var(--teal-soft);}
   .stamp.mismatch{color:var(--red);border:2px solid var(--red);background:var(--red-soft);}
 
+  /* ─── ALREADY AUDITED WARNING ─── */
+  .already-audited-banner{
+    margin-top:14px;padding:14px 16px;border-radius:var(--radius);
+    background:rgba(242,183,5,0.08);
+    border:2px solid rgba(242,183,5,0.45);
+    animation:pulseWarn 2s ease-in-out infinite, fadeUp .3s ease-out;
+    position:relative;overflow:hidden;
+  }
+  .already-audited-banner::before{
+    content:"";position:absolute;top:0;left:0;right:0;height:2px;
+    background:linear-gradient(90deg,transparent,var(--amber),transparent);
+  }
+  @keyframes pulseWarn{
+    0%,100%{border-color:rgba(242,183,5,0.45);}
+    50%{border-color:rgba(242,183,5,0.75);}
+  }
+  .already-audited-banner .warn-icon{
+    font-size:1.5rem;margin-bottom:6px;display:block;
+  }
+  .already-audited-banner .warn-title{
+    font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:1rem;
+    color:var(--amber);margin-bottom:4px;
+  }
+  .already-audited-banner .warn-detail{
+    font-size:0.8rem;color:var(--text-dim);line-height:1.5;
+    font-family:'JetBrains Mono',monospace;
+  }
+  .already-audited-banner .warn-detail b{color:var(--text);}
+  .already-audited-banner .warn-actions{
+    display:flex;gap:8px;margin-top:12px;
+  }
+  .already-audited-banner .warn-actions .btn{flex:1;font-size:0.82rem;padding:10px 14px;}
+  .btn-amber-outline{
+    background:transparent;
+    border:1px solid rgba(242,183,5,0.5);
+    color:var(--amber);
+  }
+  .btn-amber-outline:hover{background:var(--amber-soft);border-color:var(--amber);}
+  .audit-btns-disabled{opacity:0.35;pointer-events:none;filter:grayscale(0.5);}
+  .stamp.already{color:var(--amber);border:2px solid var(--amber);background:var(--amber-soft);}
+
   .mismatch-form{
     margin-top:16px;padding-top:16px;border-top:1px solid var(--border);
     animation:fadeUp .3s ease-out;
@@ -604,7 +645,22 @@
         <div class="k">Last audit</div><div class="v" id="tagLastAudit">—</div>
       </div>
 
-      <div class="btn-row">
+      <!-- Already Audited Warning Banner -->
+      <div class="already-audited-banner hidden" id="alreadyAuditedBanner">
+        <span class="warn-icon">⚠️</span>
+        <div class="warn-title" id="warnTitle">Ye asset pehle se audit ho chuka hai!</div>
+        <div class="warn-detail" id="warnDetail"></div>
+        <div class="warn-actions">
+          <button class="btn btn-outline" id="skipAuditBtn">
+            ↩ Skip karo
+          </button>
+          <button class="btn btn-amber-outline" id="forceReauditBtn">
+            🔄 Fir se audit karo
+          </button>
+        </div>
+      </div>
+
+      <div class="btn-row" id="auditBtnsRow">
         <button class="btn btn-teal" id="confirmBtn">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
           Confirm &amp; audit
@@ -675,6 +731,9 @@ let scannerRunning = false;
 let html5QrCode = null;
 let sessionLog = [];
 let counts = { scanned: 0, verified: 0, mismatch: 0 };
+
+// Track audited assets to prevent double entries
+let auditedAssets = new Set(); // stores asset_tags that have been audited in this session
 let sessionStartTime = null;
 let sessionTimerInterval = null;
 
@@ -923,6 +982,62 @@ async function lookupAsset(tag){
   }
 }
 
+function isAuditedToday(asset){
+  if(!asset.last_audit_date) return false;
+  const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+  // Snipe-IT returns date in various formats, try to match
+  const lastAudit = asset.last_audit_date;
+  // Check if the date string contains today's date
+  return lastAudit.includes(today);
+}
+
+function checkAlreadyAudited(asset){
+  const tag = asset.asset_tag;
+  const inSession = auditedAssets.has(tag);
+  const auditedToday = isAuditedToday(asset);
+  
+  if(inSession || auditedToday){
+    // Show the warning banner
+    $("alreadyAuditedBanner").classList.remove("hidden");
+    $("auditBtnsRow").classList.add("audit-btns-disabled");
+    
+    // Build detail message
+    let detail = '';
+    if(inSession){
+      // Find the session log entry for this asset
+      const logEntry = sessionLog.find(e => e.tag === tag);
+      const status = logEntry ? logEntry.label : 'Audited';
+      const time = logEntry ? logEntry.time : '';
+      detail = `<b>Is session mein</b> ye asset <b>${status}</b> mark ho chuka hai`;
+      if(time) detail += ` (${time} ko)`;
+      detail += '.';
+      $("warnTitle").textContent = "⚠️ Is session mein pehle se audit ho chuka hai!";
+    } else if(auditedToday){
+      detail = `<b>Aaj</b> ye asset pehle se audit ho chuka hai.`;
+      detail += `<br>Last audit: <b>${asset.last_audit_date}</b>`;
+      $("warnTitle").textContent = "⚠️ Ye asset aaj pehle se audit ho chuka hai!";
+    }
+    $("warnDetail").innerHTML = detail;
+    
+    // Show ALREADY AUDITED stamp
+    $("stamp").textContent = "ALREADY DONE";
+    $("stamp").className = "stamp already";
+    $("stamp").classList.remove("hidden");
+    
+    // Warning sounds
+    vibrate([100, 80, 100]);
+    playBeep(400, 200);
+    showToast(`⚠️ ${tag} pehle se audit ho chuka hai!`, "info", 4000);
+    
+    return true;
+  }
+  
+  // Not audited — hide warning, enable buttons
+  $("alreadyAuditedBanner").classList.add("hidden");
+  $("auditBtnsRow").classList.remove("audit-btns-disabled");
+  return false;
+}
+
 function showAsset(asset){
   currentAsset = asset;
   counts.scanned++; updateStats();
@@ -941,6 +1056,9 @@ function showAsset(asset){
   $("tagStatus").textContent = (asset.status_label && asset.status_label.name) || "—";
   $("tagCategory").textContent = (asset.category && asset.category.name) || "—";
   $("tagLastAudit").textContent = asset.last_audit_date || "Never audited";
+
+  // Check if already audited
+  checkAlreadyAudited(asset);
 
   // Re-trigger card animation
   const card = $("assetCard");
@@ -976,6 +1094,9 @@ async function doAudit(locationId, note, isMismatch){
     if(!resp.ok) throw new Error("HTTP " + resp.status);
     await resp.json();
 
+    // Add to audited set to track in this session
+    auditedAssets.add(currentAsset.asset_tag);
+
     if(isMismatch){
       counts.mismatch++;
       $("stamp").textContent = "MISMATCH";
@@ -992,6 +1113,9 @@ async function doAudit(locationId, note, isMismatch){
       showToast(`Audit saved: ${currentAsset.asset_tag}`, "ok");
     }
     $("stamp").classList.remove("hidden");
+    // Hide the warning banner and re-enable buttons after successful audit
+    $("alreadyAuditedBanner").classList.add("hidden");
+    $("auditBtnsRow").classList.add("audit-btns-disabled");
     updateStats();
 
     logEntry(
@@ -1106,14 +1230,35 @@ $("printReportBtn").addEventListener("click", () => {
   window.print();
 });
 
+// ═══ SKIP / FORCE RE-AUDIT BUTTONS ═══
+$("skipAuditBtn").addEventListener("click", () => {
+  // Hide the asset card and warning, move on
+  $("assetCard").classList.add("hidden");
+  $("alreadyAuditedBanner").classList.add("hidden");
+  currentAsset = null;
+  showToast("Asset skip kiya — next scan karo", "info", 2000);
+  playBeep(500, 80);
+});
+
+$("forceReauditBtn").addEventListener("click", () => {
+  // Enable the audit buttons, hide warning
+  $("alreadyAuditedBanner").classList.add("hidden");
+  $("auditBtnsRow").classList.remove("audit-btns-disabled");
+  $("stamp").classList.add("hidden");
+  showToast("Audit buttons enabled — re-audit karo", "info", 2000);
+  vibrate(50);
+});
+
 // ═══ SESSION CONTROLS ═══
 $("resetSessionBtn").addEventListener("click", () => {
   if(sessionLog.length > 0 && !confirm("Current session ka data clear ho jaayega. Continue?")) return;
   sessionLog = [];
   counts = { scanned: 0, verified: 0, mismatch: 0 };
+  auditedAssets.clear(); // Clear audited tracking
   updateStats();
   renderLog();
   $("assetCard").classList.add("hidden");
+  $("alreadyAuditedBanner").classList.add("hidden");
   currentAsset = null;
   stopSessionTimer();
   startSessionTimer();
@@ -1127,6 +1272,7 @@ $("disconnectBtn").addEventListener("click", () => {
   SI_URL = ""; SI_TOKEN = "";
   sessionLog = [];
   counts = { scanned: 0, verified: 0, mismatch: 0 };
+  auditedAssets.clear(); // Clear audited tracking
   currentAsset = null;
   updateStats();
   $("scanSection").classList.add("hidden");
@@ -1135,6 +1281,7 @@ $("disconnectBtn").addEventListener("click", () => {
   $("connLabel").textContent = "Disconnected";
   $("sessionTimer").classList.add("hidden");
   $("assetCard").classList.add("hidden");
+  $("alreadyAuditedBanner").classList.add("hidden");
   $("siToken").value = "";
   setStatus($("setupStatus"), "", "");
   showToast("Disconnected from Snipe-IT", "info");
