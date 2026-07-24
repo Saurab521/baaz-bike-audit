@@ -156,8 +156,22 @@
           </div>
         </div>
 
+        <!-- Already Audited Warning Banner -->
+        <div class="already-audited-banner hidden" id="alreadyAuditedBanner">
+          <div class="warn-title" id="warnTitle">⚠️ Ye asset pehle se audit ho chuka hai!</div>
+          <div class="warn-detail" id="warnDetail"></div>
+          <div class="warn-actions">
+            <button class="btn btn--outline" id="btnSkipAudit">
+              ↩ Skip karo
+            </button>
+            <button class="btn btn--amber-outline" id="btnForceReaudit">
+              🔄 Fir se audit karo
+            </button>
+          </div>
+        </div>
+
         <!-- Audit buttons -->
-        <div class="btn-row">
+        <div class="btn-row" id="auditBtnsRow">
           <button class="btn btn--teal" id="btnConfirm">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
             Confirm &amp; Audit

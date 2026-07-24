@@ -29,6 +29,7 @@ class App {
     this.activeView = 'viewSetup';
     this.locationAssets = [];  // To store assets for the selected location
     this.ocrScanning = false;  // OCR scan in progress flag
+    this.auditedAssets = new Set(); // Track audited asset tags to prevent double entries
   }
 
   // ─────────────────────────────────────────
@@ -86,6 +87,10 @@ class App {
       feedback.tap();
     });
     $('btnSubmitMismatch').addEventListener('click', () => this.doAudit(true));
+
+    // ── Skip / Force Re-audit ──
+    $('btnSkipAudit').addEventListener('click', () => this.skipAudit());
+    $('btnForceReaudit').addEventListener('click', () => this.forceReaudit());
 
     // ── Bottom navigation ──
     document.querySelectorAll('.nav-btn[data-view]').forEach((btn) => {
@@ -232,6 +237,12 @@ class App {
       const savedSession = Storage.getActiveSession();
       if (savedSession) {
         this.session.restoreState(savedSession);
+        
+        // Restore audited assets tracking
+        this.session.log.forEach(entry => {
+          if (entry.tag) this.auditedAssets.add(entry.tag);
+        });
+
         this.updateStats();
       }
 
@@ -722,6 +733,93 @@ class App {
     }
   }
 
+  // ─────────────────────────────────────────
+  //  Duplicate Audit Detection
+  // ─────────────────────────────────────────
+
+  /** Extract date string from Snipe-IT's last_audit_date (handles object & string formats) */
+  getAuditDateString(asset) {
+    const d = asset.last_audit_date;
+    if (!d) return null;
+    if (typeof d === 'object' && d.datetime) return d.datetime;
+    if (typeof d === 'object' && d.formatted) return d.formatted;
+    if (typeof d === 'string') return d;
+    return String(d);
+  }
+
+  /** Check if asset was audited today based on Snipe-IT date */
+  isAuditedToday(asset) {
+    const dateStr = this.getAuditDateString(asset);
+    if (!dateStr) return false;
+    const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+    return dateStr.includes(today);
+  }
+
+  /** Check if asset is already audited (in session or today) and show warning */
+  checkAlreadyAudited(asset) {
+    const tag = asset.asset_tag;
+    const inSession = this.auditedAssets.has(tag);
+    const auditedToday = this.isAuditedToday(asset);
+
+    if (inSession || auditedToday) {
+      // Show warning banner
+      $('alreadyAuditedBanner').classList.remove('hidden');
+      $('auditBtnsRow').classList.add('audit-btns-disabled');
+
+      // Build detail message
+      let detail = '';
+      if (inSession) {
+        const logEntry = this.session.log.find(e => e.tag === tag);
+        const status = logEntry ? logEntry.label : 'Audited';
+        const time = logEntry ? logEntry.time : '';
+        detail = `<b>Is session mein</b> ye asset <b>${status}</b> mark ho chuka hai`;
+        if (time) detail += ` (${time} ko)`;
+        detail += '.';
+        $('warnTitle').textContent = '⚠️ Is session mein pehle se audit ho chuka hai!';
+      } else if (auditedToday) {
+        const auditDateStr = this.getAuditDateString(asset) || 'Today';
+        detail = `<b>Aaj</b> ye asset pehle se audit ho chuka hai.`;
+        detail += `<br>Last audit: <b>${auditDateStr}</b>`;
+        $('warnTitle').textContent = '⚠️ Ye asset aaj pehle se audit ho chuka hai!';
+      }
+      $('warnDetail').innerHTML = detail;
+
+      // Show ALREADY DONE stamp
+      const stamp = $('stamp');
+      stamp.textContent = 'ALREADY DONE';
+      stamp.className = 'stamp stamp--already';
+      stamp.classList.remove('hidden');
+
+      // Warning feedback
+      feedback.error();
+      showToast(`⚠️ ${tag} pehle se audit ho chuka hai!`, 'info', 4000);
+      return true;
+    }
+
+    // Not audited — hide warning, enable buttons
+    $('alreadyAuditedBanner').classList.add('hidden');
+    $('auditBtnsRow').classList.remove('audit-btns-disabled');
+    return false;
+  }
+
+  /** Skip the already-audited asset */
+  skipAudit() {
+    $('assetCard').classList.add('hidden');
+    $('alreadyAuditedBanner').classList.add('hidden');
+    this.currentAsset = null;
+    showToast('Asset skip kiya — next scan karo', 'info', 2000);
+    feedback.tap();
+  }
+
+  /** Force re-audit — enable buttons */
+  forceReaudit() {
+    $('alreadyAuditedBanner').classList.add('hidden');
+    $('auditBtnsRow').classList.remove('audit-btns-disabled');
+    $('stamp').classList.add('hidden');
+    showToast('Audit buttons enabled — re-audit karo', 'info', 2000);
+    feedback.tap();
+  }
+
   showAsset(asset) {
     this.currentAsset = asset;
     this.session.addScan();
@@ -744,8 +842,7 @@ class App {
     $('tagCategory').textContent =
       (asset.category && asset.category.name) || '—';
     $('tagLastAudit').textContent =
-      (asset.last_audit_date && asset.last_audit_date.formatted) 
-      || (typeof asset.last_audit_date === 'string' ? asset.last_audit_date : 'Never audited');
+      this.getAuditDateString(asset) || 'Never audited';
 
     // Repair & Issue quick stats
     const repairCost = this.repairs.getTotalCost(asset.asset_tag);
@@ -760,6 +857,9 @@ class App {
     $('mismatchForm').classList.add('hidden');
     $('inputRemarks').value = '';
     setStatus($('actionStatus'), '', '');
+
+    // Check if already audited
+    this.checkAlreadyAudited(asset);
 
     // Show card with animation
     $('assetCard').classList.remove('hidden');
@@ -794,6 +894,9 @@ class App {
     try {
       await this.api.auditAsset(asset.id, { note, locationId });
 
+      // Track audited asset to prevent double entries
+      this.auditedAssets.add(asset.asset_tag);
+
       // Update stamp
       const stamp = $('stamp');
       if (isMismatch) {
@@ -808,6 +911,9 @@ class App {
         showToast(`Audit saved: ${asset.asset_tag}`, 'ok');
       }
       stamp.classList.remove('hidden');
+      // Hide warning banner and disable buttons after successful audit
+      $('alreadyAuditedBanner').classList.add('hidden');
+      $('auditBtnsRow').classList.add('audit-btns-disabled');
 
       // Log entry
       this.session.addEntry({
