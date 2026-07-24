@@ -739,11 +739,61 @@ let sessionTimerInterval = null;
 
 const $ = (id) => document.getElementById(id);
 
-// ─── localStorage: remember URL ───
-(function loadSaved(){
-  const saved = localStorage.getItem("baaz_snipeit_url");
-  if(saved) $("siUrl").value = saved;
-})();
+// ─── PERSIST SESSION DATA ───
+const SESSION_KEYS = {
+  log: "baaz_session_log",
+  counts: "baaz_session_counts",
+  audited: "baaz_session_audited",
+  startTime: "baaz_session_start",
+  url: "baaz_snipeit_url",
+  hasSession: "baaz_has_active_session"
+};
+
+function saveSession(){
+  try {
+    localStorage.setItem(SESSION_KEYS.log, JSON.stringify(sessionLog));
+    localStorage.setItem(SESSION_KEYS.counts, JSON.stringify(counts));
+    localStorage.setItem(SESSION_KEYS.audited, JSON.stringify([...auditedAssets]));
+    if(sessionStartTime) localStorage.setItem(SESSION_KEYS.startTime, sessionStartTime.toString());
+    localStorage.setItem(SESSION_KEYS.hasSession, "1");
+  } catch(e) { /* localStorage full or unavailable */ }
+}
+
+function clearSessionStorage(){
+  Object.values(SESSION_KEYS).forEach(key => {
+    if(key !== SESSION_KEYS.url) localStorage.removeItem(key);
+  });
+}
+
+function restoreSession(){
+  try {
+    // Restore URL
+    const savedUrl = localStorage.getItem(SESSION_KEYS.url);
+    if(savedUrl) $("siUrl").value = savedUrl;
+
+    // Restore session data if exists
+    const savedLog = localStorage.getItem(SESSION_KEYS.log);
+    const savedCounts = localStorage.getItem(SESSION_KEYS.counts);
+    const savedAudited = localStorage.getItem(SESSION_KEYS.audited);
+    const savedStart = localStorage.getItem(SESSION_KEYS.startTime);
+
+    if(savedLog){
+      sessionLog = JSON.parse(savedLog);
+    }
+    if(savedCounts){
+      counts = JSON.parse(savedCounts);
+    }
+    if(savedAudited){
+      auditedAssets = new Set(JSON.parse(savedAudited));
+    }
+    if(savedStart){
+      sessionStartTime = parseInt(savedStart, 10);
+    }
+  } catch(e) { /* parse error, start fresh */ }
+}
+
+// Restore on page load
+restoreSession();
 
 // ─── Utility ───
 function setStatus(el, msg, type){
@@ -799,6 +849,7 @@ function api(path, options={}){
 // ─── Session Timer ───
 function startSessionTimer(){
   sessionStartTime = Date.now();
+  saveSession(); // Persist start time
   $("sessionTimer").classList.remove("hidden");
   sessionTimerInterval = setInterval(() => {
     const elapsed = Math.floor((Date.now() - sessionStartTime) / 1000);
@@ -857,7 +908,23 @@ $("testConnBtn").addEventListener("click", async () => {
       $("setupSection").classList.add("hidden");
       $("scanSection").classList.remove("hidden");
       startScanner();
-      startSessionTimer();
+
+      // Restore previous session or start new timer
+      if(sessionStartTime && sessionLog.length > 0){
+        // Resuming existing session — restore UI
+        updateStats();
+        renderLog();
+        $("sessionTimer").classList.remove("hidden");
+        sessionTimerInterval = setInterval(() => {
+          const elapsed = Math.floor((Date.now() - sessionStartTime) / 1000);
+          const m = String(Math.floor(elapsed / 60)).padStart(2, '0');
+          const s = String(elapsed % 60).padStart(2, '0');
+          $("timerDisplay").textContent = `${m}:${s}`;
+        }, 1000);
+        showToast(`Session restored! ${sessionLog.length} audits loaded.`, "info", 3000);
+      } else {
+        startSessionTimer();
+      }
       showToast("Snipe-IT se connected! Scanner ready.", "ok");
     }, 600);
 
@@ -982,13 +1049,25 @@ async function lookupAsset(tag){
   }
 }
 
+function getAuditDateString(asset){
+  // Snipe-IT returns last_audit_date in various formats:
+  // 1. null (never audited)
+  // 2. Object: {datetime: "2026-07-24 10:30:00", formatted: "Thu Jul 24, 2026"}
+  // 3. String: "2026-07-24" or "2026-07-24 10:30:00"
+  const d = asset.last_audit_date;
+  if(!d) return null;
+  if(typeof d === 'object' && d.datetime) return d.datetime;
+  if(typeof d === 'object' && d.formatted) return d.formatted;
+  if(typeof d === 'string') return d;
+  return String(d);
+}
+
 function isAuditedToday(asset){
-  if(!asset.last_audit_date) return false;
+  const dateStr = getAuditDateString(asset);
+  if(!dateStr) return false;
   const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
-  // Snipe-IT returns date in various formats, try to match
-  const lastAudit = asset.last_audit_date;
   // Check if the date string contains today's date
-  return lastAudit.includes(today);
+  return dateStr.includes(today);
 }
 
 function checkAlreadyAudited(asset){
@@ -1013,8 +1092,9 @@ function checkAlreadyAudited(asset){
       detail += '.';
       $("warnTitle").textContent = "⚠️ Is session mein pehle se audit ho chuka hai!";
     } else if(auditedToday){
+      const auditDateStr = getAuditDateString(asset) || 'Today';
       detail = `<b>Aaj</b> ye asset pehle se audit ho chuka hai.`;
-      detail += `<br>Last audit: <b>${asset.last_audit_date}</b>`;
+      detail += `<br>Last audit: <b>${auditDateStr}</b>`;
       $("warnTitle").textContent = "⚠️ Ye asset aaj pehle se audit ho chuka hai!";
     }
     $("warnDetail").innerHTML = detail;
@@ -1055,7 +1135,7 @@ function showAsset(asset){
   $("tagAssigned").textContent = (asset.assigned_to && asset.assigned_to.name) || "—";
   $("tagStatus").textContent = (asset.status_label && asset.status_label.name) || "—";
   $("tagCategory").textContent = (asset.category && asset.category.name) || "—";
-  $("tagLastAudit").textContent = asset.last_audit_date || "Never audited";
+  $("tagLastAudit").textContent = getAuditDateString(asset) || "Never audited";
 
   // Check if already audited
   checkAlreadyAudited(asset);
@@ -1096,6 +1176,7 @@ async function doAudit(locationId, note, isMismatch){
 
     // Add to audited set to track in this session
     auditedAssets.add(currentAsset.asset_tag);
+    saveSession(); // Persist updated audited set
 
     if(isMismatch){
       counts.mismatch++;
@@ -1139,6 +1220,7 @@ async function doAudit(locationId, note, isMismatch){
 function logEntry(tag, name, badgeType, label){
   sessionLog.unshift({ tag, name, badgeType, label, time: new Date().toLocaleTimeString() });
   renderLog();
+  saveSession(); // Persist to localStorage
 }
 
 function renderLog(filter=""){
@@ -1255,6 +1337,7 @@ $("resetSessionBtn").addEventListener("click", () => {
   sessionLog = [];
   counts = { scanned: 0, verified: 0, mismatch: 0 };
   auditedAssets.clear(); // Clear audited tracking
+  clearSessionStorage(); // Remove from localStorage too
   updateStats();
   renderLog();
   $("assetCard").classList.add("hidden");
@@ -1273,6 +1356,7 @@ $("disconnectBtn").addEventListener("click", () => {
   sessionLog = [];
   counts = { scanned: 0, verified: 0, mismatch: 0 };
   auditedAssets.clear(); // Clear audited tracking
+  clearSessionStorage(); // Remove from localStorage too
   currentAsset = null;
   updateStats();
   $("scanSection").classList.add("hidden");
